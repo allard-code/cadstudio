@@ -47,6 +47,7 @@ PART_DEFAULTS: dict[str, Any] = {
     "visible": True,
     "export": True,
     "location": [0, 0, 0, 0, 0, 0],  # x, y, z (mm), rx, ry, rz (degrees), applied after the code
+    "scale": [1.0, 1.0, 1.0],  # sx, sy, sz, about the part's own centre, applied before location
     "mesh_file": None,
     "note": "",
 }
@@ -163,6 +164,9 @@ class Project:
             if "location" in fields:
                 loc = [float(v) for v in fields["location"]]
                 fields["location"] = (loc + [0] * 6)[:6]
+            if "scale" in fields:
+                sc = [max(0.01, float(v)) for v in fields["scale"]]  # 0 or negative would collapse/invert the part
+                fields["scale"] = (sc + [1.0] * 3)[:3]
             if "filament" in fields:
                 fields["filament"] = max(1, min(16, int(fields["filament"])))
             for p in self.parts:
@@ -340,6 +344,9 @@ class Project:
             raise PartError(f"`result` is a {type(result).__name__}, expected a build123d Part/Solid/Compound")
         if not result.solids():
             raise PartError("`result` contains no solids (is it a 2D sketch? use extrude())")
+        sx, sy, sz = spec.get("scale") or [1, 1, 1]
+        if (sx, sy, sz) != (1, 1, 1):
+            result = result.scale((sx, sy, sz), about=result.bounding_box().center())
         x, y, z, rx, ry, rz = spec.get("location") or [0] * 6
         if any((x, y, z, rx, ry, rz)):
             result = bd.Pos(x, y, z) * (bd.Rot(rx, ry, rz) * result)
@@ -357,6 +364,10 @@ class Project:
         if spec.get("recenter", True):  # models from MakerWorld etc. sit somewhere on *their* bed: centre on origin, z=0
             lo, hi = V.min(axis=0), V.max(axis=0)
             V = V - np.array([(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2]])
+        sx, sy, sz = spec.get("scale") or [1, 1, 1]
+        if (sx, sy, sz) != (1, 1, 1):
+            c = (V.min(axis=0) + V.max(axis=0)) / 2
+            V = (V - c) * np.array([sx, sy, sz]) + c
         x, y, z, rx, ry, rz = spec.get("location") or [0] * 6
         if any((rx, ry, rz)):
             R = rot_matrix(rx, ry, rz)

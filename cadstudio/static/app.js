@@ -64,7 +64,7 @@ tc.setSize(0.8);
 scene.add(tc.getHelper ? tc.getHelper() : tc);
 tc.addEventListener("dragging-changed", (e) => {
   controls.enabled = !e.value;
-  if (!e.value) commitMove();
+  if (!e.value) { if (tc.getMode() === "scale") commitResize(); else commitMove(); }
 });
 
 function resize() {
@@ -174,11 +174,13 @@ function setView(v) {
   controls.target.copy(c); camera.position.copy(c.clone().add(dir.multiplyScalar(d)));
 }
 
-// ------------------------------------------------------------------ gizmo move -> location
+// ------------------------------------------------------------------ gizmo move/resize -> location/scale
 function attachGizmo() {
   const m = S.selected && S.meshes.get(S.selected);
-  if (S.move && m && m.mesh.visible) { if (tc.object !== m.mesh) tc.attach(m.mesh); }
-  else tc.detach();
+  if ((S.move || S.resize) && m && m.mesh.visible) {
+    if (tc.object !== m.mesh) tc.attach(m.mesh);
+    tc.setMode(S.resize ? "scale" : "translate");
+  } else tc.detach();
 }
 async function commitMove() {
   const obj = tc.object; if (!obj) return;
@@ -187,6 +189,16 @@ async function commitMove() {
   const loc = [...p.location]; loc[0] += +d.x.toFixed(2); loc[1] += +d.y.toFixed(2); loc[2] += +d.z.toFixed(2);
   await savePart(name, { location: loc });
   // the mesh is reloaded from the server with the new location baked in
+}
+async function commitResize() {
+  const obj = tc.object; if (!obj) return;
+  const name = obj.userData.name; const p = S.project.parts.find((q) => q.name === name);
+  const s = obj.scale;
+  if (Math.abs(s.x - 1) < 1e-4 && Math.abs(s.y - 1) < 1e-4 && Math.abs(s.z - 1) < 1e-4) return;
+  const cur = p.scale || [1, 1, 1];
+  const next = [cur[0] * s.x, cur[1] * s.y, cur[2] * s.z].map((v) => +v.toFixed(3));
+  await savePart(name, { scale: next });
+  // the mesh is reloaded from the server with the new scale baked into the geometry
 }
 
 // ------------------------------------------------------------------ UI: params
@@ -259,9 +271,13 @@ function renderInspector(force = false) {
     $("#pFilament").onchange = (e) => savePart(S.selected, { filament: +e.target.value });
     $("#pVisible").onchange = (e) => savePart(S.selected, { visible: e.target.checked });
     $("#pExport").onchange = (e) => savePart(S.selected, { export: e.target.checked });
-    ins.querySelectorAll(".loc input").forEach((inp) => inp.onchange = () => {
-      const loc = [...ins.querySelectorAll(".loc input")].map((i) => parseFloat(i.value) || 0);
+    ins.querySelectorAll("[data-i]").forEach((inp) => inp.onchange = () => {
+      const loc = [...ins.querySelectorAll("[data-i]")].map((i) => parseFloat(i.value) || 0);
       savePart(S.selected, { location: loc });
+    });
+    ins.querySelectorAll("[data-s]").forEach((inp) => inp.onchange = () => {
+      const scale = [...ins.querySelectorAll("[data-s]")].map((i) => parseFloat(i.value) || 1);
+      savePart(S.selected, { scale });
     });
     const code = $("#pCode");
     code.oninput = () => { S.dirtyCode = true; $("#pRun").classList.add("dirty"); };
@@ -282,7 +298,9 @@ function renderInspector(force = false) {
   $("#pColor").value = p.color.length === 7 ? p.color : "#cccccc";
   $("#pFilament").value = p.filament;
   $("#pVisible").checked = p.visible; $("#pExport").checked = p.export;
-  ins.querySelectorAll(".loc input").forEach((inp, i) => { if (document.activeElement !== inp) inp.value = +(+p.location[i]).toFixed(3); });
+  ins.querySelectorAll("[data-i]").forEach((inp, i) => { if (document.activeElement !== inp) inp.value = +(+p.location[i]).toFixed(3); });
+  const scaleVals = p.scale || [1, 1, 1];
+  ins.querySelectorAll("[data-s]").forEach((inp, i) => { if (document.activeElement !== inp) inp.value = +(+scaleVals[i]).toFixed(3); });
   const code = $("#pCode");
   if (p.type === "mesh") { code.value = t("insp.mesh", { file: p.mesh_file }); code.disabled = true; $("#pRun").disabled = true; }
   else if (!S.dirtyCode) { code.value = p.code; code.disabled = false; $("#pRun").disabled = false; $("#pRun").classList.remove("dirty"); }
@@ -402,16 +420,23 @@ $("#exportStep").onclick = () => doExport("step");
 // view bar
 document.querySelectorAll("[data-view]").forEach((b) => b.onclick = () => setView(b.dataset.view));
 const toggle = (key, btn) => { S[key] = !S[key]; btn.classList.toggle("on", S[key]); syncSceneProps(); };
+// move and resize share one gizmo, so turning one on turns the other off
+const toggleGizmoMode = (key, btn, otherKey, otherBtn) => {
+  S[key] = !S[key]; if (S[key]) { S[otherKey] = false; otherBtn.classList.remove("on"); }
+  btn.classList.toggle("on", S[key]); syncSceneProps();
+};
 $("#toggleXray").onclick = (e) => toggle("xray", e.currentTarget);
 $("#toggleEdges").onclick = (e) => toggle("edges", e.currentTarget);
 $("#toggleBed").onclick = (e) => toggle("bed", e.currentTarget);
-$("#toggleMove").onclick = (e) => toggle("move", e.currentTarget);
+$("#toggleMove").onclick = (e) => toggleGizmoMode("move", e.currentTarget, "resize", $("#toggleResize"));
+$("#toggleResize").onclick = (e) => toggleGizmoMode("resize", e.currentTarget, "move", $("#toggleMove"));
 $("#toggleEdges").classList.add("on"); $("#toggleBed").classList.add("on");
 window.addEventListener("keydown", (e) => {
   if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
   if (e.key === "x") $("#toggleXray").click();
   if (e.key === "e") $("#toggleEdges").click();
   if (e.key === "g") $("#toggleMove").click();
+  if (e.key === "s") $("#toggleResize").click();
   if (e.key === "f") setView("fit");
   if (e.key === "Escape") select(null);
   if (e.key === "Delete" && S.selected) $("#pDel")?.click();

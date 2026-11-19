@@ -60,6 +60,26 @@ def test_location_is_applied(proj):
     assert info["bbox_min"] == [5.0, -10.0, 5.0]
 
 
+def test_scale_stretches_about_its_own_centre(proj):
+    proj.upsert_part("a", code=BOX, scale=[2, 1, 1])
+    info = proj.build("a")["info"]
+    assert info["size"] == [40.0, 10.0, 5.0]
+    assert info["bbox_min"] == [-20.0, -5.0, 0.0]
+    assert abs(info["volume_mm3"] - 2000) < 1e-6
+
+
+def test_scale_combines_with_location(proj):
+    proj.upsert_part("a", code=BOX, scale=[2, 1, 1], location=[10, 0, 0, 0, 0, 0])
+    info = proj.build("a")["info"]
+    assert info["size"] == [40.0, 10.0, 5.0]
+    assert info["bbox_min"] == [-10.0, -5.0, 0.0]  # stretched first, then moved
+
+
+def test_scale_is_clamped_to_positive(proj):
+    proj.upsert_part("a", code=BOX, scale=[-5, 0, 3])
+    assert proj.find("a")["scale"] == [0.01, 0.01, 3.0]
+
+
 def test_filament_auto_assignment(proj):
     proj.upsert_part("a", code=BOX, color="#ff0000")
     proj.upsert_part("b", code=BOX, color="#00ff00")
@@ -81,6 +101,16 @@ def test_mesh_import_is_recentred(proj, tmp_path):
     info = proj.build("ref")["info"]
     assert info["ok"] and info["bbox_min"] == [-5.0, -5.0, 0.0]
     assert abs(info["volume_mm3"] - 1000) < 1e-6
+
+
+def test_mesh_import_scale_is_applied(proj, tmp_path):
+    f = tmp_path / "cube.stl"
+    trimesh.creation.box((10, 10, 10)).export(f)
+    proj.import_mesh("ref", f)
+    proj.upsert_part("ref", scale=[2, 1, 1])
+    info = proj.build("ref")["info"]
+    assert info["ok"] and info["size"] == [20.0, 10.0, 10.0]
+    assert abs(info["volume_mm3"] - 2000) < 1e-6
 
 
 def test_project_is_persisted_and_reloaded(proj):

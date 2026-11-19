@@ -123,24 +123,29 @@ def set_params(params: dict[str, Any], replace: bool = False) -> dict:
 
 @mcp.tool()
 def set_part(name: str, code: str, color: str | None = None, filament: int | None = None,
-             location: list[float] | None = None, note: str | None = None) -> dict:
+             location: list[float] | None = None, scale: list[float] | None = None, note: str | None = None) -> dict:
     """Create or replace a part from build123d code. The code must assign `result`.
     color: hex, e.g. "#D62828" (display + 3MF colour). filament: extruder / filament slot 1..8.
     location: optional [x, y, z, rx, ry, rz] applied after the code.
+    scale: optional [sx, sy, sz] (default [1,1,1]) stretch/shrink about the part's own centre, applied before location.
     The response contains ok/error (+traceback), bbox, size (mm), volume, triangle count and watertight."""
     proj = _proj()
-    proj.upsert_part(name, type="code", code=code, color=color, filament=filament, location=location, note=note)
+    proj.upsert_part(name, type="code", code=code, color=color, filament=filament, location=location,
+                      scale=scale, note=note)
     return _part_report(proj, name)
 
 
 @mcp.tool()
 def update_part(name: str, color: str | None = None, filament: int | None = None, visible: bool | None = None,
-                export: bool | None = None, location: list[float] | None = None, new_name: str | None = None) -> dict:
+                export: bool | None = None, location: list[float] | None = None, scale: list[float] | None = None,
+                new_name: str | None = None) -> dict:
     """Change part properties without replacing the code (colour, slot, visibility, include in export,
-    position/rotation [x,y,z,rx,ry,rz], rename – part("..") references are updated)."""
+    position/rotation [x,y,z,rx,ry,rz], scale [sx,sy,sz] about its own centre, rename – part("..") references
+    are updated)."""
     proj = _proj()
     proj.find(name)
-    proj.upsert_part(name, color=color, filament=filament, visible=visible, export=export, location=location)
+    proj.upsert_part(name, color=color, filament=filament, visible=visible, export=export, location=location,
+                      scale=scale)
     if new_name and new_name != name:
         proj.rename_part(name, new_name)
         name = new_name

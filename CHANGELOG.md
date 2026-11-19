@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+- Parts can be stretched per axis: a new `scale` field (`[sx, sy, sz]`, about the part's own centre). Usable from the
+  editor (new "Resize" toolbar button / `S` shortcut with drag handles, plus exact numeric fields in the inspector)
+  and from Claude via `set_part`/`update_part`. Applied before export, so 3MF/STL/STEP all reflect it.
+
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.
 - An `Authorization` header with just the token (without `Bearer `) is accepted.
