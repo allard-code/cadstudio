@@ -80,6 +80,38 @@ def test_scale_is_clamped_to_positive(proj):
     assert proj.find("a")["scale"] == [0.01, 0.01, 3.0]
 
 
+def test_common_code_is_shared_across_parts(proj):
+    proj.data["common"] = "def slab(l, w, h): return Box(l, w, h)"
+    proj.upsert_part("a", code="result = slab(20, 10, 5)")
+    proj.upsert_part("b", code="result = slab(8, 8, 8)")
+    assert proj.build("a")["info"]["size"] == [20.0, 10.0, 5.0]
+    assert proj.build("b")["info"]["size"] == [8.0, 8.0, 8.0]
+
+
+def test_common_code_can_use_part_ref(proj):
+    proj.data["common"] = "def doubled(name): return part(name) + Pos(0, 0, 100) * part(name)"
+    proj.upsert_part("base", code=BOX)
+    proj.upsert_part("a", code="result = doubled('base')")
+    assert abs(proj.build("a")["info"]["volume_mm3"] - 2000) < 1e-6
+
+
+def test_common_code_change_invalidates_cache(proj):
+    proj.data["common"] = "def slab(): return Box(10, 10, 5)"
+    proj.upsert_part("a", code="result = slab()")
+    assert proj.build("a")["info"]["size"] == [10.0, 10.0, 5.0]
+    proj.data["common"] = "def slab(): return Box(20, 10, 5)"
+    proj.save()
+    assert proj.build("a")["info"]["size"] == [20.0, 10.0, 5.0]
+
+
+def test_common_code_error_is_reported_not_raised(proj):
+    proj.data["common"] = "this is not valid python ("
+    proj.upsert_part("a", code=BOX)
+    info = proj.build("a")["info"]
+    assert info["ok"] is False
+    assert "SyntaxError" in info["error"]
+
+
 def test_filament_auto_assignment(proj):
     proj.upsert_part("a", code=BOX, color="#ff0000")
     proj.upsert_part("b", code=BOX, color="#00ff00")

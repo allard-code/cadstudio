@@ -40,6 +40,8 @@ Workflow:
 2. Put dimensions in parameters (set_params) so the user can tweak them in the editor.
 3. Create one part per colour / component with set_part(name, code, color, filament).
    The code is build123d and must assign `result`. Read get_build123d_reference() when unsure.
+   If several parts share helper functions/constants/geometry (e.g. one profile reused by 4 colour parts),
+   put that once in set_common_code() instead of repeating it in every part's code.
 4. ALWAYS check visually with render_preview() and check bbox/size in the set_part response.
    Fix errors (the traceback is returned) before moving on.
 5. export_3mf() for the slicer. Give the user the download_url and tell them which filament slot needs which colour.
@@ -107,6 +109,19 @@ def set_notes(notes: str) -> dict:
     proj.data["notes"] = notes
     proj.save()
     return {"ok": True}
+
+
+@mcp.tool()
+def set_common_code(code: str) -> dict:
+    """build123d code executed once before every part's own code, in the same namespace (functions, constants,
+    shapes reused by name). Put a helper here once instead of repeating it in every part - this is the fix for
+    a multi-colour design where each part's code starts with the same block (e.g. one shared layout/profile
+    used by 4 colour parts): move that block here and leave only the part-specific geometry in each part.
+    Rebuilds every part (their cache key includes this code); the response is each part's new build status."""
+    proj = _proj()
+    proj.data["common"] = code
+    proj.save()
+    return {"parts": [_part_report(proj, p["name"]) for p in proj.parts]}
 
 
 @mcp.tool()

@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Parts can be stretched per axis: a new `scale` field (`[sx, sy, sz]`, about the part's own centre). Usable from the
   editor (new "Resize" toolbar button / `S` shortcut with drag handles, plus exact numeric fields in the inspector)
   and from Claude via `set_part`/`update_part`. Applied before export, so 3MF/STL/STEP all reflect it.
+- Project-level shared code: a "Shared code" box in the editor (and `set_common_code` for Claude) runs once before
+  every part's own code, in the same namespace. Put a helper function/constant used by several parts here once
+  instead of repeating it in each part — cuts down on duplicated code in multi-colour designs.
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.

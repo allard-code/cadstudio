@@ -85,6 +85,10 @@ inlay = Pos(0, 0, h/2) * extrude(label, amount=0.8)
   Then the volumes don't overlap and the slicer doesn't cut anything away.
 * Export with export_3mf(mode="assembly") -> one object, parts per extruder, aligned.
 * Minimum thickness for a colour layer: ~0.4–0.6 mm (2–3 layers of 0.2). Minimum detail ~0.4 mm (nozzle).
+* If several colour parts share helper functions, constants or a profile (a common pattern once a design has
+  3+ colour parts), define that once with `set_common_code()` instead of pasting it into every part's code.
+  It runs once before each part's own code, in the same namespace, so its functions/variables are just
+  available by name afterwards (no `part("...")` needed to reach them).
 
 ## Printability (FDM, 0.4 nozzle)
 * Wall thickness ≥ 1.2 mm (3 lines), preferably 1.6–2.0.

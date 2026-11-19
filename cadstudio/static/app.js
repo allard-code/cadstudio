@@ -10,8 +10,8 @@ const S = {
   project: null,          // summary from server
   selected: null,         // part name
   meshes: new Map(),      // name -> {key, mesh, edges}
-  xray: false, edges: true, bed: true, move: false,
-  dirtyCode: false,
+  xray: false, edges: true, bed: true, move: false, resize: false,
+  dirtyCode: false, dirtyCommon: false,
 };
 const $ = (s, r = document) => r.querySelector(s);
 const api = async (url, opts = {}) => {
@@ -354,6 +354,7 @@ function apply(summary, force = false) {
     await Promise.all(summary.parts.map(loadMesh));
     renderParams(); renderParts(); renderInspector(force); syncSceneProps();
     if (document.activeElement !== $("#notes")) $("#notes").value = summary.notes || "";
+    if (document.activeElement !== $("#common")) { $("#common").value = summary.common || ""; S.dirtyCommon = false; $("#commonRun").classList.remove("dirty"); }
     document.title = `CAD-Studio · ${summary.name}`;
     if (first) setView("iso");
   }).catch((e) => toast(e.message, "err"));
@@ -382,6 +383,21 @@ $("#newProject").onclick = async () => {
 
 let notesTimer;
 $("#notes").oninput = (e) => { clearTimeout(notesTimer); notesTimer = setTimeout(() => api("/api/notes", { method: "PUT", body: JSON.stringify({ notes: e.target.value }) }), 600); };
+
+// shared code, run before every part's own code (helpers/constants reused across parts) - explicit build,
+// like part code, since a mistake here breaks every part at once rather than just one.
+const commonEl = $("#common");
+commonEl.oninput = () => { S.dirtyCommon = true; $("#commonRun").classList.add("dirty"); };
+commonEl.onkeydown = (e) => {
+  if (e.key === "Tab") { e.preventDefault(); const s = commonEl.selectionStart; commonEl.setRangeText("    ", s, commonEl.selectionEnd, "end"); commonEl.oninput(); }
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runCommon(); }
+};
+async function runCommon() {
+  S.dirtyCommon = false; $("#commonRun").classList.remove("dirty");
+  try { apply(await api("/api/common", { method: "PUT", body: JSON.stringify({ common: commonEl.value }) })); }
+  catch (e) { toast(e.message, "err"); }
+}
+$("#commonRun").onclick = runCommon;
 
 // ------------------------------------------------------------------ toolbar: add / import / export
 const TEMPLATES = {

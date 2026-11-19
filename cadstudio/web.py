@@ -200,6 +200,14 @@ def put_notes(body: dict = Body(...)):
     return {"ok": True}
 
 
+@app.put("/api/common")
+def put_common(body: dict = Body(...)):
+    proj = _proj()
+    proj.data["common"] = body.get("common", "")
+    proj.save()
+    return proj.summary()  # shared code affects every part's build status
+
+
 @app.put("/api/parts/{name}")
 def put_part(name: str, body: dict = Body(...)):
     proj = _proj()

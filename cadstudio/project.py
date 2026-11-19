@@ -109,7 +109,7 @@ class Project:
         self.name = slugify(name)
         self.dir = PROJECTS / self.name
         self.file = self.dir / "project.json"
-        self.data: dict[str, Any] = {"name": self.name, "rev": 0, "params": {}, "parts": [], "notes": ""}
+        self.data: dict[str, Any] = {"name": self.name, "rev": 0, "params": {}, "parts": [], "notes": "", "common": ""}
         self._mtime = None
         self._cache: dict[str, dict] = {}  # part name -> {"key", "shape", "mesh", "info"}
         if self.file.exists():
@@ -252,7 +252,7 @@ class Project:
             if s["type"] == "mesh" and s.get("mesh_file"):
                 f = self.dir / s["mesh_file"]
                 s["_mtime"] = f.stat().st_mtime_ns if f.exists() else 0
-        return _sha([specs, self.params])
+        return _sha([specs, self.params, self.data.get("common", "")])
 
     def build(self, name: str, _stack: tuple = ()) -> dict:
         """Build a part. Returns cache entry {"shape", "mesh": (V, F), "info"}; never raises for user-code errors."""
@@ -297,7 +297,7 @@ class Project:
             except Exception as e:  # user code errors are reported, not raised
                 tb = traceback.format_exc(limit=6)
                 # keep only the frames from the user's code where possible
-                user = [ln for ln in tb.splitlines() if "<part " in ln]
+                user = [ln for ln in tb.splitlines() if "<part " in ln or "<common>" in ln]
                 entry["info"].update(ok=False, error=f"{type(e).__name__}: {e}",
                                      traceback="\n".join(user) or tb)
             entry["info"]["build_s"] = round(time.time() - t0, 3)
@@ -323,6 +323,9 @@ class Project:
             return e["shape"]
 
         ns["part"] = part
+        common = self.data.get("common") or ""
+        if common.strip():
+            exec(compile(common, "<common>", "exec"), ns)
         code = spec.get("code") or ""
         if not code.strip():
             raise PartError("Part has no code yet")
@@ -385,7 +388,7 @@ class Project:
             q = {**PART_DEFAULTS, **p}
             parts.append({**q, "info": infos[p["name"]]["info"]})
         return {"name": self.name, "rev": self.rev, "params": self.params, "notes": self.data.get("notes", ""),
-                "parts": parts, "bed": BED, "dir": str(self.dir)}
+                "common": self.data.get("common", ""), "parts": parts, "bed": BED, "dir": str(self.dir)}
 
 
 # --------------------------------------------------------------------------- geometry helpers
