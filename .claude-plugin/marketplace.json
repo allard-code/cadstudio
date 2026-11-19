@@ -5,13 +5,13 @@
     "url": "https://github.com/allard-code"
   },
   "metadata": {
-    "description": "CAD-Studio: parametrische CAD + multi-color 3MF-export via MCP"
+    "description": "CAD-Studio: parametric CAD + multi-colour 3MF export for Claude via MCP"
   },
   "plugins": [
     {
       "name": "cad-studio",
       "source": "./claude-plugin",
-      "description": "Verbindt Claude Code met je CAD-Studio-server (Docker) en voegt de werkwijze voor 3D-print-ontwerpen toe."
+      "description": "Connects Claude Code to your CAD-Studio server (Docker) and adds the workflow for designing 3D-printable parts."
     }
   ]
 }

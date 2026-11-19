@@ -1,0 +1,51 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Part code / project to reproduce
+      description: The build123d code of the failing part, or attach `data/projects/<name>/project.json`.
+      render: python
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run CAD-Studio?
+      options:
+        - Docker (ghcr.io image)
+        - Docker (built myself)
+        - pip / local (stdio, Claude Desktop)
+        - pip / local (serve)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: CAD-Studio version
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Claude client
+      placeholder: Claude Code 2.x / Claude Desktop / claude.ai / none
+  - type: input
+    id: slicer
+    attributes:
+      label: Slicer (for 3MF problems)
+      placeholder: OrcaSlicer 2.x / Bambu Studio / Anycubic Slicer Next / PrusaSlicer
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / error output
+      description: e.g. `docker logs cadstudio`
+      render: text

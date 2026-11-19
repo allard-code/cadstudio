@@ -1,5 +1,6 @@
 <!doctype html>
-<html lang="nl">
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>CAD-Studio</title>
@@ -17,61 +18,62 @@
 <header>
   <div class="brand">◆ CAD-Studio</div>
   <select id="projectSelect" title="Project"></select>
-  <button id="newProject" title="Nieuw project">＋ Project</button>
+  <button id="newProject" data-i18n="project.new" data-i18n-title="project.new.title"></button>
   <span class="sep"></span>
   <div class="group">
-    <button data-add="box">▭ Box</button>
-    <button data-add="cylinder">◯ Cilinder</button>
-    <button data-add="sphere">● Bol</button>
-    <button data-add="text">T Tekst</button>
-    <button data-add="code">{ } Code</button>
-    <label class="btn" title="STL/3MF/OBJ importeren als referentie">⤓ Import<input type="file" id="importFile" accept=".stl,.3mf,.obj" hidden></label>
+    <button data-add="box" data-i18n="add.box"></button>
+    <button data-add="cylinder" data-i18n="add.cylinder"></button>
+    <button data-add="sphere" data-i18n="add.sphere"></button>
+    <button data-add="text" data-i18n="add.text"></button>
+    <button data-add="code" data-i18n="add.code"></button>
+    <label class="btn" data-i18n-title="import.title"><span data-i18n="import"></span><input type="file" id="importFile" accept=".stl,.3mf,.obj" hidden></label>
   </div>
   <span class="grow"></span>
   <div class="group">
     <select id="exportFlavor" title="Slicer">
-      <option value="orca">Anycubic / Orca</option>
+      <option value="orca">Orca / Bambu / Anycubic</option>
       <option value="prusa">PrusaSlicer</option>
     </select>
-    <select id="exportMode" title="Indeling">
-      <option value="assembly">1 object (multi-color)</option>
-      <option value="objects">losse objecten</option>
+    <select id="exportMode" data-i18n-title="export.mode.title">
+      <option value="assembly" data-i18n="export.mode.assembly"></option>
+      <option value="objects" data-i18n="export.mode.objects"></option>
     </select>
-    <button id="export3mf" class="primary">Exporteer 3MF</button>
+    <button id="export3mf" class="primary" data-i18n="export.3mf"></button>
     <button id="exportStl">STL</button>
     <button id="exportStep">STEP</button>
   </div>
-  <span id="live" class="live" title="Live verbonden: wijzigingen van Claude verschijnen direct">● live</span>
+  <select id="langSelect" data-i18n-title="lang.title"><option value="en">EN</option><option value="nl">NL</option></select>
+  <span id="live" class="live" data-i18n-title="live.title">● live</span>
 </header>
 
 <main>
   <aside id="left">
     <section>
-      <h3>Parameters <button id="addParam" class="mini" title="Parameter toevoegen">＋</button></h3>
+      <h3><span data-i18n="params"></span> <button id="addParam" class="mini" data-i18n-title="params.add">＋</button></h3>
       <div id="params"></div>
     </section>
     <section class="fill">
-      <h3>Onderdelen</h3>
+      <h3 data-i18n="parts"></h3>
       <div id="parts"></div>
     </section>
     <section>
-      <h3>Notities</h3>
-      <textarea id="notes" rows="4" placeholder="Eisen, maten, ideeën… (Claude leest dit ook)"></textarea>
+      <h3 data-i18n="notes"></h3>
+      <textarea id="notes" rows="4" data-i18n-placeholder="notes.placeholder"></textarea>
     </section>
   </aside>
 
   <div id="viewport">
     <div id="viewbar">
-      <button data-view="iso">Iso</button>
-      <button data-view="front">Voor</button>
-      <button data-view="top">Boven</button>
-      <button data-view="right">Rechts</button>
-      <button data-view="fit">Passend</button>
+      <button data-view="iso" data-i18n="view.iso"></button>
+      <button data-view="front" data-i18n="view.front"></button>
+      <button data-view="top" data-i18n="view.top"></button>
+      <button data-view="right" data-i18n="view.right"></button>
+      <button data-view="fit" data-i18n="view.fit"></button>
       <span class="sep"></span>
-      <button id="toggleMove" title="Verplaats geselecteerd onderdeel met pijlen (G)">✥ Verplaats</button>
-      <button id="toggleXray" title="Doorzichtig (X)">◐ X-ray</button>
-      <button id="toggleEdges" title="Randen (E)">▦ Randen</button>
-      <button id="toggleBed" title="Printbed tonen">▤ Bed</button>
+      <button id="toggleMove" data-i18n="view.move" data-i18n-title="view.move.title"></button>
+      <button id="toggleXray" data-i18n="view.xray" data-i18n-title="view.xray.title"></button>
+      <button id="toggleEdges" data-i18n="view.edges" data-i18n-title="view.edges.title"></button>
+      <button id="toggleBed" data-i18n="view.bed" data-i18n-title="view.bed.title"></button>
     </div>
     <div id="dims"></div>
     <div id="toast"></div>
@@ -79,41 +81,41 @@
 
   <aside id="right">
     <div id="inspector" class="empty">
-      <p class="hint">Selecteer een onderdeel in de lijst of in de 3D-view.</p>
+      <p class="hint" data-i18n="insp.hint"></p>
       <div class="howto">
-        <h4>Werken met Claude</h4>
-        <p>Vraag in Claude Desktop/Code bijvoorbeeld:</p>
-        <code>Maak een bakje van 80×50×30 mm met 2 mm wand, afgeronde hoeken en mijn naam in rood als inleg op de voorkant. Exporteer als 3MF.</code>
-        <p>Wijzigingen van Claude verschijnen hier live. Jij kunt daarna parameters, kleuren en code aanpassen.</p>
+        <h4 data-i18n="howto.title"></h4>
+        <p data-i18n="howto.ask"></p>
+        <code data-i18n="howto.example"></code>
+        <p data-i18n="howto.live"></p>
       </div>
     </div>
   </aside>
 </main>
 
 <template id="inspectorTpl">
-  <div class="row"><label>Naam</label><input id="pName"></div>
+  <div class="row"><label data-i18n="insp.name"></label><input id="pName"></div>
   <div class="row two">
-    <div><label>Kleur</label><input id="pColor" type="color"></div>
-    <div><label>Filament / ACE-slot</label>
+    <div><label data-i18n="insp.color"></label><input id="pColor" type="color"></div>
+    <div><label data-i18n="insp.filament"></label>
       <select id="pFilament"></select></div>
   </div>
   <div class="row checks">
-    <label><input type="checkbox" id="pVisible"> zichtbaar</label>
-    <label><input type="checkbox" id="pExport"> exporteren</label>
+    <label><input type="checkbox" id="pVisible"> <span data-i18n="insp.visible"></span></label>
+    <label><input type="checkbox" id="pExport"> <span data-i18n="insp.export"></span></label>
   </div>
-  <div class="row"><label>Positie (mm) &amp; rotatie (°) — na de code toegepast</label>
+  <div class="row"><label data-i18n="insp.location"></label>
     <div class="loc">
       <input data-i="0" title="X"><input data-i="1" title="Y"><input data-i="2" title="Z">
       <input data-i="3" title="rot X"><input data-i="4" title="rot Y"><input data-i="5" title="rot Z">
     </div>
   </div>
   <div class="row codewrap">
-    <label>build123d-code <span class="muted">(Ctrl+Enter = bouwen, wijs toe aan <b>result</b>)</span></label>
+    <label><span data-i18n="insp.code"></span> <span class="muted" data-i18n-html="insp.code.hint"></span></label>
     <textarea id="pCode" spellcheck="false"></textarea>
     <div class="actions">
-      <button id="pRun" class="primary">▶ Bouwen</button>
-      <button id="pDup">Dupliceren</button>
-      <button id="pDel" class="danger">Verwijderen</button>
+      <button id="pRun" class="primary" data-i18n="insp.build"></button>
+      <button id="pDup" data-i18n="insp.duplicate"></button>
+      <button id="pDel" class="danger" data-i18n="insp.delete"></button>
     </div>
   </div>
   <div id="pInfo" class="info"></div>

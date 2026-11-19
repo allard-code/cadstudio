@@ -1,23 +1,23 @@
 # docker compose up -d --build
-# Werkt ook als Portainer-stack ("Repository" → wijs naar je git-repo, of gebruik de GHCR-image hieronder).
+# Also works as a Portainer stack ("Repository" → point it at this git repo, or use the GHCR image below).
 services:
   cadstudio:
     build: .
-    # Of zonder zelf te bouwen, na de GitHub Action (zie README):
+    # Or, without building yourself:
     # image: ghcr.io/allard-code/cadstudio:latest
     container_name: cadstudio
     restart: unless-stopped
     ports:
       - "8765:8765"
     environment:
-      # Verplicht als de poort buiten je eigen pc bereikbaar is. Maak er een met:
+      # Required whenever the port is reachable from other machines. Generate one with:
       #   python -c "import secrets; print(secrets.token_urlsafe(32))"
-      CADSTUDIO_TOKEN: ${CADSTUDIO_TOKEN:?zet CADSTUDIO_TOKEN in .env}
-      # Het adres waaronder jij/Claude de server bereikt (voor downloadlinks in antwoorden van Claude)
+      CADSTUDIO_TOKEN: ${CADSTUDIO_TOKEN:?set CADSTUDIO_TOKEN in .env}
+      # The address you/Claude use to reach the server (used for download links returned to Claude)
       CADSTUDIO_PUBLIC_URL: ${CADSTUDIO_PUBLIC_URL:-http://localhost:8765}
-      TZ: Europe/Amsterdam
-      PUID: 1000   # eigenaar van de bestanden in ./data
+      TZ: ${TZ:-Europe/Amsterdam}
+      PUID: 1000   # owner of the files in ./data
       PGID: 1000
     volumes:
-      # projecten, exports en de inbox (zet hier STL/3MF neer om te importeren)
+      # projects, exports and the inbox (drop STL/3MF files here to import them)
       - ./data:/data

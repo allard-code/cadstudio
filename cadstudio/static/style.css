@@ -70,3 +70,4 @@ input[type=color]{width:100%;height:30px;padding:2px}
 .info.err{border-color:var(--danger);color:#ffb4b6}
 .info.ok{border-color:#2d4a33}
 .dirty{color:var(--accent)!important}
+#langSelect{padding:3px 4px}

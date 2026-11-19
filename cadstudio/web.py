@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Web editor backend (FastAPI) + MCP over Streamable HTTP on /mcp, in one process.
 
 Local:   python -m cadstudio web                 -> http://127.0.0.1:8765  (no auth)
@@ -67,11 +68,7 @@ app.router.routes.extend(_mcp_sub.routes)
 
 OPEN_PATHS = ("/static/", "/dl/", "/health", "/login")
 
-LOGIN_HTML = """<!doctype html><html lang=nl><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>CAD-Studio – inloggen</title><style>body{font-family:system-ui;background:#15171b;color:#e6e8eb;display:grid;place-items:center;height:100vh;margin:0}
-form{background:#1d2026;padding:28px;border-radius:10px;border:1px solid #30353e;width:320px}input,button{font:inherit;width:100%;box-sizing:border-box;padding:9px;margin-top:10px;border-radius:6px;border:1px solid #30353e;background:#111317;color:#e6e8eb}
-button{background:#ff8a3d;color:#1a1a1a;font-weight:600;border:0;cursor:pointer}h2{margin:0 0 4px;color:#ff8a3d}p{color:#8b93a1;margin:0;font-size:13px}.e{color:#e5484d}</style>
-<form method=post action=/login><h2>◆ CAD-Studio</h2><p>Voer je toegangstoken in (CADSTUDIO_TOKEN).</p>__ERR__<input type=password name=token autofocus placeholder=token><button>Inloggen</button></form></html>"""
+LOGIN_HTML = (STATIC / "login.html").read_text(encoding="utf-8")
 
 
 def _token_from(request: Request) -> str | None:
@@ -98,7 +95,7 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
     if path == "/":
         return HTMLResponse(LOGIN_HTML.replace("__ERR__", ""), status_code=401)
-    return JSONResponse({"error": "unauthorized – stuur 'Authorization: Bearer <CADSTUDIO_TOKEN>'"}, status_code=401,
+    return JSONResponse({"error": "unauthorized – send 'Authorization: Bearer <CADSTUDIO_TOKEN>'"}, status_code=401,
                         headers={"WWW-Authenticate": "Bearer"})
 
 
@@ -111,7 +108,7 @@ async def login(request: Request):
         resp = RedirectResponse("/", status_code=303)
         resp.set_cookie("cs_token", given, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 90)
         return resp
-    return HTMLResponse(LOGIN_HTML.replace("__ERR__", "<p class=e>Onjuist token</p>"), status_code=401)
+    return HTMLResponse(LOGIN_HTML.replace("__ERR__", "<p class=e>Invalid token</p>"), status_code=401)
 
 
 @app.get("/health")
@@ -219,9 +216,9 @@ def del_part(name: str):
 def dup_part(name: str):
     proj = _proj()
     spec = proj.find(name)
-    new, i = f"{name}_kopie", 2
+    new, i = f"{name}_copy", 2
     while proj.has(new):
-        new, i = f"{name}_kopie{i}", i + 1
+        new, i = f"{name}_copy{i}", i + 1
     proj.upsert_part(new, **{k: v for k, v in spec.items() if k != "name"})
     return proj.summary()
 
@@ -275,7 +272,7 @@ def export(body: dict = Body(...)):
         res = export_step(proj)
         files = [res["path"]]
     else:
-        raise HTTPException(400, "onbekend formaat")
+        raise HTTPException(400, "unknown format")
     # relative signed links: work behind any host name / proxy
     res["download"] = [u.replace(links.public_url(), "") for u in (links.download_url(f) for f in files) if u]
     return res
@@ -285,7 +282,7 @@ def export(body: dict = Body(...)):
 def signed_download(exp: int, sig: str, rel: str):
     p = links.check_download(exp, sig, rel)
     if not p:
-        raise HTTPException(404, "link verlopen of ongeldig")
+        raise HTTPException(404, "link expired or invalid")
     return FileResponse(p, filename=p.name)
 
 

@@ -1,7 +1,9 @@
-"""MCP server: gives Claude (Desktop / Code) tools to model parts, look at them and export 3MF.
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""MCP server: gives Claude (Desktop / Code / claude.ai) tools to model parts, look at them and export 3MF.
 
-Run:  python -m cadstudio mcp      (stdio transport, for claude_desktop_config.json)
-The web editor is started automatically in a background thread (http://127.0.0.1:8765).
+Run:  python -m cadstudio mcp      (stdio transport, e.g. for claude_desktop_config.json)
+      python -m cadstudio serve    (streamable HTTP on /mcp, together with the web editor – used in Docker)
+In stdio mode the web editor is started automatically in a background thread (http://127.0.0.1:8765).
 """
 from __future__ import annotations
 
@@ -14,34 +16,38 @@ from pathlib import Path
 from typing import Any
 
 try:  # MCP Python SDK 2.x
-    from mcp.server.mcpserver import Image, MCPServer as _Server
+    from mcp.server.mcpserver import Image
+    from mcp.server.mcpserver import MCPServer as _Server
 except ImportError:  # MCP Python SDK 1.x
-    from mcp.server.fastmcp import FastMCP as _Server, Image
+    from mcp.server.fastmcp import FastMCP as _Server
+    from mcp.server.fastmcp import Image
 
 from . import links
 from . import project as P
-from .export3mf import export_3mf as _export_3mf, export_step as _export_step, export_stl as _export_stl
+from .export3mf import export_3mf as _export_3mf
+from .export3mf import export_step as _export_step
+from .export3mf import export_stl as _export_stl
 from .render import render_png, thumbnail
 
 CHEATSHEET = (Path(__file__).parent / "cheatsheet.md").read_text(encoding="utf-8")
 WEB_PORT = int(os.environ.get("CADSTUDIO_PORT", "8765"))
 
-INSTRUCTIONS = f"""CAD-Studio: parametrische CAD (build123d / OpenCascade) voor 3D-printen, met export naar
-multi-color 3MF voor Anycubic Slicer Next (Orca-basis) en de ACE Pro.
+INSTRUCTIONS = f"""CAD-Studio: parametric CAD (build123d / OpenCascade) for 3D printing, with export to
+multi-colour 3MF for Orca-based slicers (Anycubic Slicer Next, OrcaSlicer, Bambu Studio) and PrusaSlicer.
 
-Werkwijze:
-1. get_project() om de huidige staat te zien (of new_project/open_project).
-2. Zet maten als parameters (set_params) zodat de gebruiker ze in de editor kan aanpassen.
-3. Maak per kleur/onderdeel een part met set_part(name, code, color, filament).
-   De code is build123d en moet `result` toewijzen. Lees get_build123d_reference() bij twijfel.
-4. Controleer ALTIJD visueel met render_preview() en check bbox/size in het antwoord van set_part.
-   Repareer fouten (de traceback komt terug) voordat je verdergaat.
-5. export_3mf() voor de slicer. Geef de gebruiker de download_url en vertel welk ACE-slot welke kleur moet hebben.
-Bestanden van de gebruiker (STL/3MF van MakerWorld e.d.): list_inbox() + import_mesh(file_path), of import_mesh(url=...).
-De server kan op een andere machine draaien (Docker): paden zijn paden op de server, niet op de pc van de gebruiker.
-De gebruiker ziet live mee in de web-editor: {{web_url}}
+Workflow:
+1. get_project() to see the current state (or new_project / open_project).
+2. Put dimensions in parameters (set_params) so the user can tweak them in the editor.
+3. Create one part per colour / component with set_part(name, code, color, filament).
+   The code is build123d and must assign `result`. Read get_build123d_reference() when unsure.
+4. ALWAYS check visually with render_preview() and check bbox/size in the set_part response.
+   Fix errors (the traceback is returned) before moving on.
+5. export_3mf() for the slicer. Give the user the download_url and tell them which filament slot needs which colour.
+User files (STL/3MF from MakerWorld etc.): list_inbox() + import_mesh(file_path), or import_mesh(url=...).
+The server may run on another machine (Docker): paths are server paths, not paths on the user's computer.
+Reply in the user's language. The user watches live in the web editor: {{web_url}}
 
-Korte API-samenvatting:
+Short API summary:
 {CHEATSHEET[:2500]}
 """
 
@@ -63,13 +69,13 @@ def _part_report(proj: P.Project, name: str) -> dict:
 
 @mcp.tool()
 def list_projects() -> dict:
-    """Lijst van alle projecten en welk project actief is."""
+    """List all projects and which one is active."""
     return {"projects": P.list_projects(), "current": P.current_project_name(), "home": str(P.HOME)}
 
 
 @mcp.tool()
 def new_project(name: str, notes: str = "") -> dict:
-    """Maak een nieuw (leeg) project en maak het actief. Bestaat het al, dan wordt het alleen geopend."""
+    """Create a new (empty) project and make it active. If it already exists it is just opened."""
     P.set_current_project(name)
     proj = _proj()
     if notes:
@@ -80,23 +86,23 @@ def new_project(name: str, notes: str = "") -> dict:
 
 @mcp.tool()
 def open_project(name: str) -> dict:
-    """Open een bestaand project (wordt het actieve project, ook in de web-editor)."""
+    """Open an existing project (it becomes the active project, also in the web editor)."""
     if P.slugify(name) not in P.list_projects():
-        return {"error": f"Project '{name}' bestaat niet", "projects": P.list_projects()}
+        return {"error": f"Project '{name}' does not exist", "projects": P.list_projects()}
     P.set_current_project(name)
     return _proj().summary()
 
 
 @mcp.tool()
 def get_project() -> dict:
-    """Volledige staat van het actieve project: parameters, alle parts met code, kleur, filament-slot
-    en build-info (ok/error, bounding box, afmetingen, volume)."""
+    """Full state of the active project: parameters, all parts with code, colour, filament slot
+    and build info (ok/error, bounding box, size, volume, watertight)."""
     return _proj().summary()
 
 
 @mcp.tool()
 def set_notes(notes: str) -> dict:
-    """Sla ontwerpnotities op bij het project (eisen, maten van andere modellen, beslissingen)."""
+    """Store design notes with the project (requirements, dimensions of other models, decisions)."""
     proj = _proj()
     proj.data["notes"] = notes
     proj.save()
@@ -105,9 +111,9 @@ def set_notes(notes: str) -> dict:
 
 @mcp.tool()
 def set_params(params: dict[str, Any], replace: bool = False) -> dict:
-    """Zet projectparameters (bv. {"w": 60, "wall": 2}). Ze zijn als variabelen beschikbaar in alle part-code
-    en de gebruiker kan ze in de editor met sliders aanpassen. Waarde null verwijdert een parameter.
-    Geeft de nieuwe build-status van alle parts terug."""
+    """Set project parameters (e.g. {"w": 60, "wall": 2}). They are available as variables in all part code
+    and the user can adjust them with sliders in the editor. A null value removes a parameter.
+    Returns the new build status of all parts."""
     proj = _proj()
     proj.set_params(params, replace=replace)
     return {"params": proj.params, "parts": [_part_report(proj, p["name"]) for p in proj.parts]}
@@ -118,10 +124,10 @@ def set_params(params: dict[str, Any], replace: bool = False) -> dict:
 @mcp.tool()
 def set_part(name: str, code: str, color: str | None = None, filament: int | None = None,
              location: list[float] | None = None, note: str | None = None) -> dict:
-    """Maak of vervang een part met build123d-code. De code moet `result` toewijzen.
-    color: hex, bv. "#D62828" (weergave + 3MF-kleur). filament: ACE Pro-slot / extruder 1..8.
-    location: optioneel [x, y, z, rx, ry, rz] die ná de code wordt toegepast.
-    Antwoord bevat ok/error (+traceback), bbox, size (mm), volume en aantal driehoeken."""
+    """Create or replace a part from build123d code. The code must assign `result`.
+    color: hex, e.g. "#D62828" (display + 3MF colour). filament: extruder / filament slot 1..8.
+    location: optional [x, y, z, rx, ry, rz] applied after the code.
+    The response contains ok/error (+traceback), bbox, size (mm), volume, triangle count and watertight."""
     proj = _proj()
     proj.upsert_part(name, type="code", code=code, color=color, filament=filament, location=location, note=note)
     return _part_report(proj, name)
@@ -130,8 +136,8 @@ def set_part(name: str, code: str, color: str | None = None, filament: int | Non
 @mcp.tool()
 def update_part(name: str, color: str | None = None, filament: int | None = None, visible: bool | None = None,
                 export: bool | None = None, location: list[float] | None = None, new_name: str | None = None) -> dict:
-    """Wijzig eigenschappen van een part zonder de code te vervangen (kleur, slot, zichtbaarheid,
-    meenemen in export, positie/rotatie [x,y,z,rx,ry,rz], hernoemen – verwijzingen part("..") worden meegenomen)."""
+    """Change part properties without replacing the code (colour, slot, visibility, include in export,
+    position/rotation [x,y,z,rx,ry,rz], rename – part("..") references are updated)."""
     proj = _proj()
     proj.find(name)
     proj.upsert_part(name, color=color, filament=filament, visible=visible, export=export, location=location)
@@ -144,9 +150,9 @@ def update_part(name: str, color: str | None = None, filament: int | None = None
 @mcp.tool()
 def add_primitive(name: str, kind: str, size: list[float], position: list[float] | None = None,
                   color: str | None = None, filament: int | None = None, text: str | None = None) -> dict:
-    """Snel een basisvorm toevoegen (genereert build123d-code die je later kunt aanpassen).
+    """Quickly add a basic shape (generates build123d code you can edit later).
     kind: box [l,w,h] | cylinder [r,h] | sphere [r] | cone [r1,r2,h] | torus [R,r] | text [font_size, depth] (+text).
-    De vorm staat op z=0 (onderkant op het bed), position = [x,y,z] verschuiving."""
+    The shape sits on z=0 (bottom on the bed); position = [x,y,z] offset."""
     k = kind.lower()
     s = list(size) + [0, 0, 0]
     on_bed = "align=(Align.CENTER, Align.CENTER, Align.MIN)"
@@ -163,7 +169,7 @@ def add_primitive(name: str, kind: str, size: list[float], position: list[float]
     elif k == "text":
         code = f"result = extrude(Text({json.dumps(text or name)}, font_size={s[0] or 10}), amount={s[1] or 2})"
     else:
-        return {"error": f"Onbekend kind '{kind}'"}
+        return {"error": f"Unknown kind '{kind}'"}
     loc = None
     if position:
         loc = (list(position) + [0, 0, 0])[:3] + [0, 0, 0]
@@ -172,7 +178,7 @@ def add_primitive(name: str, kind: str, size: list[float], position: list[float]
 
 @mcp.tool()
 def delete_part(name: str) -> dict:
-    """Verwijder een part."""
+    """Delete a part."""
     proj = _proj()
     proj.delete_part(name)
     return {"ok": True, "parts": [p["name"] for p in proj.parts]}
@@ -180,8 +186,8 @@ def delete_part(name: str) -> dict:
 
 @mcp.tool()
 def list_inbox() -> dict:
-    """Bestanden in de inbox-map van de server (daar zet de gebruiker STL/3MF/OBJ-bestanden neer,
-    bv. via de editor-upload, een netwerkshare of FileBrowser). Gebruik de naam in import_mesh(file_path=...)."""
+    """Files in the server's inbox folder (where the user drops STL/3MF/OBJ files, e.g. via the editor upload,
+    a network share or a file manager). Use the name in import_mesh(file_path=...)."""
     d = links.inbox_dir()
     files = [{"name": f.name, "size_kb": round(f.stat().st_size / 1024, 1)}
              for f in sorted(d.iterdir()) if f.is_file() and f.suffix.lower() in (".stl", ".3mf", ".obj", ".ply", ".glb")]
@@ -191,11 +197,11 @@ def list_inbox() -> dict:
 @mcp.tool()
 def import_mesh(name: str, file_path: str | None = None, url: str | None = None, color: str | None = None,
                 filament: int | None = None, location: list[float] | None = None) -> dict:
-    """Importeer een STL/3MF/OBJ als referentie-part (bv. een model van MakerWorld om tegenaan te ontwerpen).
-    file_path: bestandsnaam in de inbox (zie list_inbox) of een absoluut pad op de server.
-    url: directe download-URL van het bestand.
-    Het model wordt gecentreerd op X/Y en op z=0 gezet. Mesh-parts worden getoond, gemeten en meegeëxporteerd,
-    maar kunnen niet in booleans gebruikt worden. Zet export op false als het alleen ter referentie is."""
+    """Import an STL/3MF/OBJ as a reference part (e.g. a model from MakerWorld to design against).
+    file_path: file name in the inbox (see list_inbox) or an absolute path on the server.
+    url: direct download URL of the file.
+    The model is centred on X/Y and placed on z=0. Mesh parts are shown, measured and exported,
+    but cannot be used in booleans. Set export to false if it is only a reference."""
     proj = _proj()
     if url:
         import tempfile
@@ -206,10 +212,10 @@ def import_mesh(name: str, file_path: str | None = None, url: str | None = None,
             with urllib.request.urlopen(req, timeout=60) as r:
                 data = r.read(300 * 1024 * 1024 + 1)
         except Exception as e:
-            return {"error": f"Download mislukt: {e}. Tip: MakerWorld/Printables vereisen inloggen; laat de gebruiker "
-                             f"het bestand dan in de inbox zetten of uploaden in de editor."}
+            return {"error": f"Download failed: {e}. Tip: MakerWorld/Printables require a login; ask the user to "
+                             f"put the file in the inbox or upload it in the editor instead."}
         if len(data) > 300 * 1024 * 1024:
-            return {"error": "bestand groter dan 300 MB"}
+            return {"error": "file larger than 300 MB"}
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(data)
         src = Path(tmp.name)
@@ -218,7 +224,7 @@ def import_mesh(name: str, file_path: str | None = None, url: str | None = None,
         if not src.is_absolute():
             src = links.inbox_dir() / file_path
     else:
-        return {"error": "geef file_path of url"}
+        return {"error": "pass file_path or url"}
     try:
         proj.import_mesh(name, src, color=color, filament=filament)
     finally:
@@ -231,8 +237,8 @@ def import_mesh(name: str, file_path: str | None = None, url: str | None = None,
 
 @mcp.tool()
 def measure(names: list[str] | None = None) -> dict:
-    """Bounding boxes, afmetingen en volumes van parts (alle parts als names leeg is), plus de totale
-    bounding box en of het op het bed (250x250x250) past."""
+    """Bounding boxes, sizes and volumes of parts (all parts if names is empty), plus the overall
+    bounding box and whether it fits on the bed (250x250x250)."""
     proj = _proj()
     names = names or [p["name"] for p in proj.parts]
     reps = [_part_report(proj, n) for n in names]
@@ -249,9 +255,9 @@ def measure(names: list[str] | None = None) -> dict:
 
 @mcp.tool()
 def render_preview(view: str = "grid", parts: list[str] | None = None) -> Image:
-    """Render een afbeelding van het model zodat je het resultaat kunt controleren.
+    """Render an image of the model so you can check the result.
     view: grid (iso/front/top/right) | iso | front | back | left | right | top | bottom | iso_back.
-    parts: alleen deze parts tonen (standaard alle zichtbare)."""
+    parts: only show these parts (default: all visible parts)."""
     png, errors = render_png(_proj(), view=view, parts=parts)
     if errors:
         print("render errors: " + "; ".join(errors), file=sys.stderr)
@@ -263,12 +269,12 @@ def render_preview(view: str = "grid", parts: list[str] | None = None) -> Image:
 @mcp.tool()
 def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str = "orca",
                parts: list[str] | None = None) -> dict:
-    """Exporteer naar 3MF.
-    mode: "assembly" = alle parts als één object met een extruder/ACE-slot per part (multi-color print);
-          "objects"  = elk part een los object.
-    flavor: "orca" (Anycubic Slicer Next, OrcaSlicer, Bambu Studio) of "prusa" (PrusaSlicer).
-    filename: optioneel pad; standaard <project>/exports/<project>.3mf.
-    Antwoord bevat het pad en welke parts op welk filament-slot staan."""
+    """Export to 3MF.
+    mode: "assembly" = all parts as one object with one extruder/filament slot per part (multi-colour print);
+          "objects"  = every part a separate object.
+    flavor: "orca" (Anycubic Slicer Next, OrcaSlicer, Bambu Studio) or "prusa" (PrusaSlicer).
+    filename: optional server path; default <project>/exports/<project>.3mf.
+    The response contains the path, a download_url and which parts are on which filament slot."""
     proj = _proj()
     res = _export_3mf(proj, filename, mode=mode, flavor=flavor, only=parts, thumbnail=thumbnail(proj))
     res["download_url"] = links.download_url(res["path"])
@@ -277,7 +283,7 @@ def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str 
 
 @mcp.tool()
 def export_stl(filename: str | None = None, separate: bool = True, parts: list[str] | None = None) -> dict:
-    """Exporteer STL (per part een bestand, of samengevoegd met separate=False)."""
+    """Export STL (one file per part, or merged with separate=False)."""
     res = _export_stl(_proj(), filename, only=parts, separate=separate)
     res["download_urls"] = [links.download_url(f) for f in res["files"]]
     return res
@@ -285,7 +291,7 @@ def export_stl(filename: str | None = None, separate: bool = True, parts: list[s
 
 @mcp.tool()
 def export_step(filename: str | None = None, parts: list[str] | None = None) -> dict:
-    """Exporteer de CAD-parts als STEP (exacte geometrie, te openen in Fusion 360 / FreeCAD)."""
+    """Export the CAD parts as STEP (exact geometry, opens in Fusion 360 / FreeCAD / Onshape)."""
     res = _export_step(_proj(), filename, only=parts)
     res["download_url"] = links.download_url(res["path"])
     return res
@@ -295,13 +301,13 @@ def export_step(filename: str | None = None, parts: list[str] | None = None) -> 
 
 @mcp.tool()
 def get_build123d_reference() -> str:
-    """Spiekbrief build123d + printbaarheidsregels + multi-color werkwijze. Lees dit vóór je complexe code schrijft."""
+    """build123d cheat sheet + printability rules + multi-colour workflow. Read this before writing complex code."""
     return CHEATSHEET
 
 
 @mcp.tool()
 def open_editor() -> dict:
-    """Geef de URL van de web-editor (live meekijken en zelf bewerken) en open hem als de server lokaal draait."""
+    """Return the URL of the web editor (watch live and edit) and open it if the server runs locally."""
     url = links.public_url()
     if os.environ.get("CADSTUDIO_IN_DOCKER") != "1":
         try:
@@ -337,7 +343,7 @@ def main() -> None:
         try:
             _start_web_in_background()
         except Exception as e:  # never let the UI break the MCP server
-            print(f"web UI niet gestart: {e}", file=sys.stderr)
+            print(f"web UI not started: {e}", file=sys.stderr)
     mcp.run("stdio")
 
 

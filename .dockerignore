@@ -10,3 +10,7 @@ dist
 claude-plugin
 .claude-plugin
 .env
+tests
+docs
+.pytest_cache
+.ruff_cache

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """CLI:
     python -m cadstudio mcp             MCP over stdio (Claude Desktop / Claude Code lokaal); start ook de editor
     python -m cadstudio web             editor + MCP-HTTP op http://127.0.0.1:8765 en open de browser
@@ -33,7 +34,7 @@ def main() -> None:
         from . import links
         from .web import serve
         if a.host not in ("127.0.0.1", "localhost") and not links.token():
-            print("⚠  Let op: geen CADSTUDIO_TOKEN gezet – iedereen die deze poort bereikt kan de editor en /mcp gebruiken.",
+            print("⚠  Warning: CADSTUDIO_TOKEN is not set – anyone who can reach this port can use the editor and /mcp.",
                   file=sys.stderr)
         if a.cmd == "web" and not a.no_browser:
             import threading

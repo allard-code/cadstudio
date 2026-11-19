@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Settings for running as a (remote) server: public URL, access token, signed download links, inbox."""
 from __future__ import annotations
 

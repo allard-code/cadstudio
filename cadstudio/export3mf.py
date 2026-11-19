@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """3MF / STL export with per-part colour and filament (extruder) assignment.
 
 Two flavours:
@@ -68,7 +69,7 @@ def _place(items, center: bool):
         shift = np.array([0.0, 0.0, -lo[2]])
     warn = []
     if size[0] > BED[0] or size[1] > BED[1] or size[2] > BED[2]:
-        warn.append(f"Let op: model ({size[0]:.1f} x {size[1]:.1f} x {size[2]:.1f} mm) is groter dan het bed {BED}")
+        warn.append(f"Model ({size[0]:.1f} x {size[1]:.1f} x {size[2]:.1f} mm) is larger than the bed {BED}")
     return [(s, V + shift, F) for s, V, F in items], warn
 
 
@@ -77,10 +78,10 @@ def _slot_warnings(items) -> list[str]:
     for s, _, _ in items:
         cols.setdefault(int(s["filament"]), set()).add(s["color"].lower())
     if max(cols) > 4:
-        w.append(f"Er worden filament-slots tot {max(cols)} gebruikt; één ACE Pro heeft er 4 (slot 5-8 = tweede ACE).")
+        w.append(f"Filament slots up to {max(cols)} are used; one ACE Pro has 4 (slots 5-8 = second ACE).")
     for k, v in cols.items():
         if len(v) > 1:
-            w.append(f"Slot {k} heeft parts met verschillende kleuren ({', '.join(sorted(v))}); ze printen in hetzelfde filament.")
+            w.append(f"Slot {k} has parts with different colours ({', '.join(sorted(v))}); they will print in the same filament.")
     return w
 
 
@@ -171,8 +172,8 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
 
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("[Content_Types].xml", CONTENT_TYPES)
-        z.writestr("_rels/.rels", RELS if thumbnail else RELS.replace(
-            '\n <Relationship Target="/Metadata/thumbnail.png" Id="rel-2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"/>', ""))
+        rels = RELS if thumbnail else "\n".join(ln for ln in RELS.splitlines() if "thumbnail" not in ln)
+        z.writestr("_rels/.rels", rels)
         z.writestr("3D/3dmodel.model", model)
         z.writestr(cfg_name, cfg_xml)
         if thumbnail:
@@ -230,7 +231,7 @@ def export_step(proj: Project, path: str | Path | None = None, only: list[str] |
             sh.label = p["name"]
             shapes.append(sh)
     if not shapes:
-        raise PartError("Geen CAD-parts om als STEP te exporteren")
+        raise PartError("No CAD parts to export as STEP")
     path = Path(path) if path else proj.dir / "exports" / f"{proj.name}.step"
     path.parent.mkdir(parents=True, exist_ok=True)
     bd.export_step(bd.Compound(children=shapes), str(path))

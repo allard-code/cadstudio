@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "cad-studio": {
-      "command": "C:\\Users\\JOUWNAAM\\cadstudio\\.venv\\Scripts\\python.exe",
+      "command": "C:\\Users\\YOUR_NAME\\cadstudio\\.venv\\Scripts\\python.exe",
       "args": ["-m", "cadstudio", "mcp"]
     }
   }

@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
+import { toCreasedNormals } from "three/addons/utils/BufferGeometryUtils.js";
+import { applyI18n, LANG, setLang, t } from "./i18n.js";
 
 // ------------------------------------------------------------------ state
 const S = {
@@ -104,11 +107,12 @@ async function loadMesh(part) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   geo.setIndex(new THREE.BufferAttribute(idx, 1));
-  geo.computeVertexNormals();
   geo.computeBoundingBox();
   const centre = geo.boundingBox.getCenter(new THREE.Vector3());
   geo.translate(-centre.x, -centre.y, -centre.z);   // gizmo sits in the middle of the part
-  const mesh = new THREE.Mesh(geo, material(part.color));
+  // welded meshes: keep flat faces flat and sharp edges sharp, but curved surfaces smooth
+  const shaded = toCreasedNormals(geo, Math.PI / 6);
+  const mesh = new THREE.Mesh(shaded, material(part.color));
   mesh.position.copy(centre);
   mesh.userData.name = part.name; mesh.userData.base = centre.clone();
   const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25),
@@ -146,18 +150,18 @@ function bbox(names) {
 }
 function updateDims() {
   const all = bbox();
-  let t = "";
+  let txt = "";
   if (!all.isEmpty()) {
     const s = all.getSize(new THREE.Vector3());
-    t += `Totaal  ${s.x.toFixed(1)} × ${s.y.toFixed(1)} × ${s.z.toFixed(1)} mm`;
-    if (s.x > 250 || s.y > 250 || s.z > 250) t += "  ⚠ groter dan bed";
+    txt += `${t("dims.total")}  ${s.x.toFixed(1)} × ${s.y.toFixed(1)} × ${s.z.toFixed(1)} mm`;
+    if (s.x > 250 || s.y > 250 || s.z > 250) txt += "  " + t("dims.toobig");
   }
   const p = S.selected && S.project.parts.find((q) => q.name === S.selected);
   if (p && p.info.ok) {
     const [x, y, z] = p.info.size;
-    t += `\n${p.name}  ${x.toFixed(1)} × ${y.toFixed(1)} × ${z.toFixed(1)} mm` + (p.info.volume_mm3 ? `  ·  ${(p.info.volume_mm3 / 1000).toFixed(2)} cm³` : "");
+    txt += `\n${p.name}  ${x.toFixed(1)} × ${y.toFixed(1)} × ${z.toFixed(1)} mm` + (p.info.volume_mm3 ? `  ·  ${(p.info.volume_mm3 / 1000).toFixed(2)} cm³` : "");
   }
-  $("#dims").textContent = t || "—";
+  $("#dims").textContent = txt || "—";
 }
 
 function setView(v) {
@@ -193,7 +197,7 @@ function renderParams() {
     const row = document.createElement("div"); row.className = "param";
     if (typeof v === "number") {
       const max = Math.max(10, Math.abs(v) * 3), step = Number.isInteger(v) ? 1 : 0.1;
-      row.innerHTML = `<span title="${k}">${k}</span><input type="range" min="0" max="${max}" step="${step}" value="${v}"><input type="number" step="${step}" value="${v}"><span class="x" title="verwijderen">✕</span>`;
+      row.innerHTML = `<span title="${k}">${k}</span><input type="range" min="0" max="${max}" step="${step}" value="${v}"><input type="number" step="${step}" value="${v}"><span class="x" title="${t("params.remove")}">✕</span>`;
       const [range, num] = row.querySelectorAll("input");
       range.oninput = () => (num.value = range.value);
       range.onchange = () => setParam(k, parseFloat(range.value));
@@ -205,15 +209,15 @@ function renderParams() {
     row.querySelector(".x").onclick = () => setParam(k, null);
     box.appendChild(row);
   }
-  if (!Object.keys(params).length) box.innerHTML = `<div class="muted">Nog geen parameters. Variabelen hier zijn bruikbaar in alle code.</div>`;
+  if (!Object.keys(params).length) box.innerHTML = `<div class="muted">${t("params.empty")}</div>`;
 }
 async function setParam(k, v) {
   try { apply(await api("/api/params", { method: "PUT", body: JSON.stringify({ params: { [k]: v } }) })); }
   catch (e) { toast(e.message, "err"); }
 }
 $("#addParam").onclick = () => {
-  const name = prompt("Naam van de parameter (bv. wall):"); if (!name) return;
-  const val = prompt("Waarde:", "2"); if (val === null) return;
+  const name = prompt(t("params.prompt.name")); if (!name) return;
+  const val = prompt(t("params.prompt.value"), "2"); if (val === null) return;
   setParam(name.trim(), isNaN(+val) ? val : +val);
 };
 
@@ -223,17 +227,17 @@ function renderParts() {
   for (const p of S.project.parts) {
     const d = document.createElement("div");
     d.className = "part" + (p.name === S.selected ? " sel" : "") + (p.visible ? "" : " hidden");
-    d.innerHTML = `<span class="eye ${p.visible ? "" : "off"}" title="zichtbaar">👁</span>
+    d.innerHTML = `<span class="eye ${p.visible ? "" : "off"}" title="${t("parts.visible")}">👁</span>
       <span class="sw" style="background:${p.color}"></span>
       <span class="nm">${p.name}</span>
       ${p.type === "mesh" ? '<span class="mesh">mesh</span>' : ""}
       ${p.info.ok ? "" : '<span class="err" title="' + (p.info.error || "").replace(/"/g, "'") + '">⚠</span>'}
-      <span class="slot" title="filament / ACE-slot">F${p.filament}</span>`;
+      <span class="slot" title="${t("parts.slot")}">F${p.filament}</span>`;
     d.onclick = (e) => { if (e.target.classList.contains("eye")) return; select(p.name); };
     d.querySelector(".eye").onclick = () => savePart(p.name, { visible: !p.visible });
     box.appendChild(d);
   }
-  if (!S.project.parts.length) box.innerHTML = `<div class="muted">Leeg project. Voeg een vorm toe of vraag Claude om iets te ontwerpen.</div>`;
+  if (!S.project.parts.length) box.innerHTML = `<div class="muted">${t("parts.empty")}</div>`;
 }
 
 // ------------------------------------------------------------------ UI: inspector
@@ -241,14 +245,15 @@ function renderInspector(force = false) {
   const ins = $("#inspector");
   const p = S.selected && S.project.parts.find((q) => q.name === S.selected);
   if (!p) {
-    if (!ins.classList.contains("empty")) { ins.className = "empty"; ins.innerHTML = $("#inspectorTpl").dataset.empty; }
+    if (!ins.classList.contains("empty")) { ins.className = "empty"; ins.innerHTML = $("#inspectorTpl").dataset.empty; applyI18n(ins); }
     return;
   }
   if (ins.classList.contains("empty") || ins.dataset.part !== p.name || force) {
     ins.className = ""; ins.dataset.part = p.name;
     ins.innerHTML = $("#inspectorTpl").innerHTML;
+    applyI18n(ins);
     const fil = $("#pFilament");
-    for (let i = 1; i <= 8; i++) fil.add(new Option(`${i}${i <= 4 ? "  (ACE Pro slot " + i + ")" : "  (2e ACE slot " + (i - 4) + ")"}`, i));
+    for (let i = 1; i <= 8; i++) fil.add(new Option(t(i <= 4 ? "slot.option" : "slot.second", { i }), i));
     $("#pName").onchange = (e) => savePart(p.name, { new_name: e.target.value.trim() }, e.target.value.trim());
     $("#pColor").onchange = (e) => savePart(S.selected, { color: e.target.value });
     $("#pFilament").onchange = (e) => savePart(S.selected, { filament: +e.target.value });
@@ -267,7 +272,7 @@ function renderInspector(force = false) {
     $("#pRun").onclick = runCode;
     $("#pDup").onclick = async () => apply(await api(`/api/parts/${encodeURIComponent(S.selected)}/duplicate`, { method: "POST" }));
     $("#pDel").onclick = async () => {
-      if (!confirm(`'${S.selected}' verwijderen?`)) return;
+      if (!confirm(t("insp.delete.confirm", { name: S.selected }))) return;
       const n = S.selected; S.selected = null;
       apply(await api(`/api/parts/${encodeURIComponent(n)}`, { method: "DELETE" }));
     };
@@ -279,14 +284,16 @@ function renderInspector(force = false) {
   $("#pVisible").checked = p.visible; $("#pExport").checked = p.export;
   ins.querySelectorAll(".loc input").forEach((inp, i) => { if (document.activeElement !== inp) inp.value = +(+p.location[i]).toFixed(3); });
   const code = $("#pCode");
-  if (p.type === "mesh") { code.value = `# geïmporteerde mesh: ${p.mesh_file}\n# (alleen verplaatsen/roteren, kleur en slot zijn aan te passen)`; code.disabled = true; $("#pRun").disabled = true; }
+  if (p.type === "mesh") { code.value = t("insp.mesh", { file: p.mesh_file }); code.disabled = true; $("#pRun").disabled = true; }
   else if (!S.dirtyCode) { code.value = p.code; code.disabled = false; $("#pRun").disabled = false; $("#pRun").classList.remove("dirty"); }
-  else if (code.value !== p.code && force !== "keep") toast("Code is extern gewijzigd (door Claude?) terwijl jij aan het typen was. Klik ‘Bouwen’ om jouw versie te bewaren, of selecteer het onderdeel opnieuw voor de nieuwe.", "", 7000);
+  else if (code.value !== p.code && force !== "keep") toast(t("insp.external"), "", 7000);
   const info = $("#pInfo"); const i = p.info;
   if (i.ok) {
     info.className = "info ok";
-    info.textContent = `✓ gebouwd in ${i.build_s}s · ${i.triangles} driehoeken${i.watertight === false ? " · ⚠ niet waterdicht" : i.watertight ? " · waterdicht" : ""}\nmaat  ${i.size.map((v) => v.toFixed(2)).join(" × ")} mm\nmin   ${i.bbox_min.join(", ")}\nmax   ${i.bbox_max.join(", ")}` +
-      (i.volume_mm3 ? `\nvolume ${(i.volume_mm3 / 1000).toFixed(2)} cm³ (≈ ${(i.volume_mm3 / 1000 * 1.24).toFixed(1)} g PLA bij 100% infill)` : "") +
+    info.textContent = t("info.built", { s: i.build_s, tris: i.triangles }) +
+      (i.watertight === false ? t("info.notwatertight") : i.watertight ? t("info.watertight") : "") +
+      `\n${t("info.size").padEnd(5)} ${i.size.map((v) => v.toFixed(2)).join(" × ")} mm\nmin   ${i.bbox_min.join(", ")}\nmax   ${i.bbox_max.join(", ")}` +
+      (i.volume_mm3 ? "\n" + t("info.volume", { cm3: (i.volume_mm3 / 1000).toFixed(2), g: (i.volume_mm3 / 1000 * 1.24).toFixed(1) }) : "") +
       (i.stdout ? `\n\nprint():\n${i.stdout}` : "");
   } else {
     info.className = "info err";
@@ -294,7 +301,7 @@ function renderInspector(force = false) {
   }
 }
 // store the empty-state html once
-$("#inspectorTpl").dataset.empty = $("#inspector").innerHTML;
+$("#inspectorTpl").dataset.empty = $("#inspector").innerHTML;  // untranslated; applyI18n runs on restore
 
 async function runCode() {
   const code = $("#pCode").value;
@@ -313,7 +320,7 @@ async function savePart(name, body, newSel = null, force = false) {
 }
 
 function select(name) {
-  if (S.dirtyCode && name !== S.selected && !confirm("Niet-gebouwde codewijzigingen weggooien?")) return;
+  if (S.dirtyCode && name !== S.selected && !confirm(t("insp.discard"))) return;
   S.dirtyCode = false;
   S.selected = name;
   renderParts(); renderInspector(true); syncSceneProps();
@@ -348,7 +355,7 @@ $("#projectSelect").onchange = async (e) => {
   await apply(await api("/api/projects", { method: "POST", body: JSON.stringify({ name: e.target.value }) }));
 };
 $("#newProject").onclick = async () => {
-  const n = prompt("Naam van het nieuwe project:"); if (!n) return;
+  const n = prompt(t("project.prompt")); if (!n) return;
   for (const m of S.meshes.values()) partsGroup.remove(m.mesh);
   S.meshes.clear(); S.selected = null;
   await apply(await api("/api/projects", { method: "POST", body: JSON.stringify({ name: n }) }));
@@ -363,7 +370,7 @@ const TEMPLATES = {
   box: "result = Box(30, 20, 10, align=(Align.CENTER, Align.CENTER, Align.MIN))\nresult = fillet(result.edges().filter_by(Axis.Z), 2)",
   cylinder: "result = Cylinder(radius=10, height=20, align=(Align.CENTER, Align.CENTER, Align.MIN))",
   sphere: "result = Pos(0, 0, 10) * Sphere(10)",
-  text: "result = extrude(Text('Hallo', font_size=12), amount=2)",
+  text: "result = extrude(Text('Hello', font_size=12), amount=2)",
   code: "# build123d – wijs de vorm toe aan result\nwith BuildPart() as bp:\n    Box(40, 30, 4, align=(Align.CENTER, Align.CENTER, Align.MIN))\n    with Locations((0, 0, 4)):\n        Cylinder(6, 10, align=(Align.CENTER, Align.CENTER, Align.MIN))\n    fillet(bp.edges().group_by(Axis.Z)[-1], 1)\nresult = bp.part",
 };
 document.querySelectorAll("[data-add]").forEach((b) => b.onclick = async () => {
@@ -376,7 +383,7 @@ $("#importFile").onchange = async (e) => {
   const fd = new FormData(); fd.append("file", f);
   const r = await fetch("/api/import", { method: "POST", body: fd });
   const body = await r.json(); if (!r.ok) return toast(body.error || body.detail, "err");
-  await apply(body); toast(`Geïmporteerd: ${f.name}`, "ok"); e.target.value = "";
+  await apply(body); toast(t("import.done", { name: f.name }), "ok"); e.target.value = "";
 };
 async function doExport(format) {
   try {
@@ -384,7 +391,7 @@ async function doExport(format) {
     const links = res.download.map((u) => `<a href="${u}">${decodeURIComponent(u.split("/").pop().split("%2F").pop())}</a>`).join("<br>");
     let slots = "";
     if (res.filament_slots) slots = "\n" + Object.entries(res.filament_slots).map(([k, v]) => `Slot ${k}: ${v.join(", ")}`).join("\n");
-    toast(`✓ Opgeslagen: ${(res.path || res.files.join(", "))}${slots}${res.warnings && res.warnings.length ? "\n⚠ " + res.warnings.join("\n") : ""}\n${links}`, "ok", 15000);
+    toast(`${t("export.saved", { path: res.path || res.files.join(", ") })}${slots}${res.warnings && res.warnings.length ? "\n⚠ " + res.warnings.join("\n") : ""}\n${links}`, "ok", 15000);
     res.download.forEach((u) => { const a = document.createElement("a"); a.href = u; a.download = ""; document.body.appendChild(a); a.click(); a.remove(); });
   } catch (e) { toast(e.message, "err", 8000); }
 }
@@ -428,6 +435,14 @@ function connectEvents() {
     }
   };
 }
+
+// language
+applyI18n();
+$("#langSelect").value = LANG;
+$("#langSelect").onchange = (e) => {
+  setLang(e.target.value);
+  if (S.project) { renderParams(); renderParts(); renderInspector(true); updateDims(); }
+};
 
 await loadProjects();
 await reload();

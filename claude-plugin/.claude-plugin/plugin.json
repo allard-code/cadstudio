@@ -1,22 +1,25 @@
 {
   "name": "cad-studio",
-  "version": "0.2.0",
-  "description": "Ontwerp 3D-printbare onderdelen met Claude via je eigen CAD-Studio-server, met export naar multi-color 3MF (Anycubic Slicer Next / Orca / Bambu / Prusa).",
+  "version": "0.3.0",
+  "description": "Design 3D-printable parts with Claude on your own CAD-Studio server, with export to multi-colour 3MF (Orca / Bambu / Anycubic / Prusa slicers).",
   "author": {
     "name": "allard-code"
   },
+  "homepage": "https://github.com/allard-code/cadstudio",
+  "repository": "https://github.com/allard-code/cadstudio",
+  "license": "GPL-3.0-or-later",
+  "privacyPolicyUrl": "https://github.com/allard-code/cadstudio/blob/main/PRIVACY.md",
   "userConfig": {
     "server_url": {
       "type": "string",
       "title": "CAD-Studio URL",
-      "description": "Adres van je CAD-Studio-container zonder /mcp, bv. http://192.168.1.50:8765 of https://cad.jouwdomein.nl"
+      "description": "Address of your CAD-Studio server without /mcp, e.g. http://192.168.1.50:8765 or https://cad.example.com"
     },
     "token": {
       "type": "string",
-      "title": "Toegangstoken",
-      "description": "De waarde van CADSTUDIO_TOKEN uit je .env",
+      "title": "Access token",
+      "description": "The value of CADSTUDIO_TOKEN from your .env",
       "sensitive": true
     }
-  },
-  "homepage": "https://github.com/allard-code/cadstudio"
+  }
 }

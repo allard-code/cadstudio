@@ -1,30 +1,33 @@
-# CAD-Studio – notities voor Claude Code
+# CAD-Studio – notes for Claude Code
 
-Parametrische CAD-editor + MCP-server. Python-pakket `cadstudio/`, draait als één FastAPI-proces:
-web-editor op `/`, REST-API op `/api/*`, MCP (streamable HTTP) op `/mcp`, ondertekende downloads op `/dl/*`.
+Parametric CAD editor + MCP server. Python package `cadstudio/`, runs as one FastAPI process:
+web editor on `/`, REST API on `/api/*`, MCP (streamable HTTP) on `/mcp`, signed downloads on `/dl/*`.
+License: GPL-3.0-or-later (add `# SPDX-License-Identifier: GPL-3.0-or-later` to new source files).
 
-## Structuur
-- `cadstudio/project.py` – projectmodel (JSON op schijf in `$CADSTUDIO_HOME/projects/<naam>/project.json`), part-evaluatie (build123d-code met `result`), cache, tessellatie + vertex-weld (waterdichte meshes).
-- `cadstudio/export3mf.py` – 3MF (flavor `orca`: components + `Metadata/model_settings.config` met extruder per part; flavor `prusa`: `Slic3r_PE_model.config` volume-ranges), STL, STEP.
-- `cadstudio/render.py` – headless numpy z-buffer renderer voor `render_preview` (geen OpenGL).
-- `cadstudio/mcp_server.py` – MCP-tools (werkt met MCP SDK 1.x `FastMCP` én 2.x `MCPServer`); `main()` = stdio-modus.
-- `cadstudio/web.py` – FastAPI-app, token-auth middleware (`CADSTUDIO_TOKEN`: Bearer / x-api-key / cookie / `?token=`), MCP-routes ingehangen, SSE `/api/events` voor live updates.
-- `cadstudio/links.py` – public URL, token, HMAC-ondertekende downloadlinks, inbox-map.
-- `cadstudio/static/` – editor (three.js r170 meegeleverd in `static/vendor`, geen CDN).
-- `claude-plugin/` + `.claude-plugin/marketplace.json` – Claude Code-plugin (MCP-config + skill `cad-design`).
+## Layout
+- `cadstudio/project.py` – project model (JSON on disk in `$CADSTUDIO_HOME/projects/<name>/project.json`), part evaluation (build123d code assigning `result`), cache, tessellation + vertex weld (watertight meshes).
+- `cadstudio/export3mf.py` – 3MF (flavor `orca`: components + `Metadata/model_settings.config` with an extruder per part; flavor `prusa`: `Slic3r_PE_model.config` volume ranges), STL, STEP.
+- `cadstudio/render.py` – headless numpy z-buffer renderer for `render_preview` (no OpenGL).
+- `cadstudio/mcp_server.py` – MCP tools (works with MCP SDK 1.x `FastMCP` and 2.x `MCPServer`); `main()` = stdio mode.
+- `cadstudio/web.py` – FastAPI app, token auth middleware (`CADSTUDIO_TOKEN`: Bearer / x-api-key / cookie / `?token=`), MCP routes mounted, SSE `/api/events` for live updates.
+- `cadstudio/links.py` – public URL, token, HMAC-signed download links, inbox folder.
+- `cadstudio/static/` – editor (three.js r170 vendored in `static/vendor`, no CDN); UI strings in `static/i18n.js` (EN + NL).
+- `claude-plugin/` + `.claude-plugin/marketplace.json` – Claude Code plugin (MCP config + `cad-design` skill).
+- `tests/` – pytest suite (model, export, render, web/auth, MCP over HTTP).
 
-## Ontwikkelen
+## Develop
 ```bash
-python -m venv .venv && . .venv/bin/activate && pip install -e .
-python -m cadstudio web            # http://127.0.0.1:8765, geen auth
-CADSTUDIO_TOKEN=x python -m cadstudio serve   # server-modus zoals in Docker
-docker compose up -d --build       # container
+python -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
+python -m cadstudio web                       # http://127.0.0.1:8765, no auth
+CADSTUDIO_TOKEN=x python -m cadstudio serve   # server mode as in Docker
+pytest -q && ruff check .                     # must pass before committing
+docker compose up -d --build                  # container
 ```
-Snelle check na wijzigingen: `python -m pyflakes cadstudio/*.py` en een MCP-ronde (`set_part` → `render_preview` → `export_3mf`).
 
-## Afspraken
-- Gebruikersteksten (UI, tool-beschrijvingen, foutmeldingen) in het Nederlands.
-- Eenheden mm, Z omhoog, bed = 250×250×250 (Kobra S1). Filament-slot = ACE Pro-slot.
-- MCP-tools geven fouten in user-code terug als `{"ok": false, "error", "traceback"}` i.p.v. te raisen, zodat Claude kan herstellen.
-- Niets naar stdout schrijven in stdio-modus (corrumpeert JSON-RPC); `mcp_server.main()` leidt fd 1 om.
-- Docker-versies staan vast in `requirements-docker.txt`; bij updaten eerst lokaal testen.
+## Conventions
+- Code, comments, docs, MCP tool descriptions and server messages in English. UI text only via `static/i18n.js` (keep `en` and `nl` keys in sync).
+- Units mm, Z up, default bed 250×250×250. "Filament" = slot/extruder number (AMS / ACE Pro / MMU).
+- MCP tools return user-code errors as `{"ok": false, "error", "traceback"}` instead of raising, so Claude can recover.
+- Never write to stdout in stdio mode (it corrupts JSON-RPC); `mcp_server.main()` redirects fd 1.
+- Docker versions are pinned in `requirements-docker.txt`; test locally when bumping.
+- Record user-visible changes in `CHANGELOG.md` under "Unreleased"; releases are SemVer git tags (`v0.4.0`).

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Zorgt dat /data schrijfbaar is voor PUID:PGID (standaard 1000:1000) en draait dan zonder root-rechten.
+# Makes /data writable for PUID:PGID (default 1000:1000), then runs the command without root privileges.
 set -e
 PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"

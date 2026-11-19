@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Project model: a project is a set of named parts plus global parameters.
 
 Each part is either
@@ -13,6 +14,7 @@ import contextlib
 import hashlib
 import io
 import json
+import logging
 import math
 import os
 import re
@@ -22,8 +24,6 @@ import time
 import traceback
 from pathlib import Path
 from typing import Any
-
-import logging
 
 import numpy as np
 
@@ -152,7 +152,7 @@ class Project:
         for p in self.parts:
             if p["name"] == name:
                 return {**PART_DEFAULTS, **p}
-        raise PartError(f"Part '{name}' bestaat niet. Bestaande parts: {[p['name'] for p in self.parts]}")
+        raise PartError(f"Part '{name}' does not exist. Existing parts: {[p['name'] for p in self.parts]}")
 
     def has(self, name: str) -> bool:
         return any(p["name"] == name for p in self.parts)
@@ -189,14 +189,14 @@ class Project:
             before = len(self.parts)
             self.data["parts"] = [p for p in self.parts if p["name"] != name]
             if len(self.parts) == before:
-                raise PartError(f"Part '{name}' bestaat niet")
+                raise PartError(f"Part '{name}' does not exist")
             self._cache.pop(name, None)
             self.save()
 
     def rename_part(self, old: str, new: str) -> None:
         with LOCK:
             if self.has(new):
-                raise PartError(f"Part '{new}' bestaat al")
+                raise PartError(f"Part '{new}' already exists")
             for p in self.parts:
                 if p["name"] == old:
                     p["name"] = new
@@ -206,7 +206,7 @@ class Project:
                     self._cache.clear()
                     self.save()
                     return
-            raise PartError(f"Part '{old}' bestaat niet")
+            raise PartError(f"Part '{old}' does not exist")
 
     def set_params(self, params: dict, replace: bool = False) -> None:
         with LOCK:
@@ -222,7 +222,7 @@ class Project:
     def import_mesh(self, name: str, src: str | Path, color: str | None = None, filament: int | None = None) -> dict:
         src = Path(src).expanduser()
         if not src.exists():
-            raise PartError(f"Bestand niet gevonden: {src}")
+            raise PartError(f"File not found: {src}")
         mdir = self.dir / "meshes"
         mdir.mkdir(parents=True, exist_ok=True)
         dst = mdir / f"{slugify(name)}{src.suffix.lower()}"
@@ -263,7 +263,7 @@ class Project:
             out = io.StringIO()
             try:
                 if name in _stack:
-                    raise PartError(f"Circulaire verwijzing: {' -> '.join(_stack + (name,))}")
+                    raise PartError(f"Circular reference: {' -> '.join(_stack + (name,))}")
                 if spec["type"] == "mesh":
                     V, F = self._load_mesh(spec)
                     entry["mesh"] = (V, F)
@@ -278,7 +278,7 @@ class Project:
                         pass
                 V, F = entry["mesh"]
                 if len(F) == 0:
-                    raise PartError("Resultaat bevat geen geometrie (leeg na boolean?)")
+                    raise PartError("Result contains no geometry (empty after a boolean?)")
                 lo, hi = V.min(axis=0), V.max(axis=0)
                 entry["info"].update(
                     ok=True,
@@ -313,15 +313,15 @@ class Project:
         def part(ref: str):
             e = self.build(ref, stack)
             if not e["info"].get("ok"):
-                raise PartError(f"part('{ref}') faalt: {e['info'].get('error')}")
+                raise PartError(f"part('{ref}') failed: {e['info'].get('error')}")
             if e["shape"] is None:
-                raise PartError(f"part('{ref}') is een geïmporteerde mesh en kan niet in CAD-bewerkingen gebruikt worden")
+                raise PartError(f"part('{ref}') is an imported mesh and cannot be used in CAD operations")
             return e["shape"]
 
         ns["part"] = part
         code = spec.get("code") or ""
         if not code.strip():
-            raise PartError("Part heeft nog geen code")
+            raise PartError("Part has no code yet")
         exec(compile(code, f"<part {spec['name']}>", "exec"), ns)
         result = ns.get("result")
         if result is None:
@@ -331,15 +331,15 @@ class Project:
                     result = v
                     break
         if result is None:
-            raise PartError("De code moet een 3D-vorm toewijzen aan `result`")
+            raise PartError("The code must assign a 3D shape to `result`")
         if isinstance(result, bd.BuildPart):
             result = result.part
         if isinstance(result, (list, tuple)):
             result = bd.Compound(children=list(result))
         if not isinstance(result, bd.Shape):
-            raise PartError(f"`result` is een {type(result).__name__}, verwacht een build123d Part/Solid/Compound")
+            raise PartError(f"`result` is a {type(result).__name__}, expected a build123d Part/Solid/Compound")
         if not result.solids():
-            raise PartError("`result` bevat geen solids (is het een 2D-sketch? gebruik extrude())")
+            raise PartError("`result` contains no solids (is it a 2D sketch? use extrude())")
         x, y, z, rx, ry, rz = spec.get("location") or [0] * 6
         if any((x, y, z, rx, ry, rz)):
             result = bd.Pos(x, y, z) * (bd.Rot(rx, ry, rz) * result)
@@ -350,7 +350,7 @@ class Project:
 
         f = self.dir / (spec.get("mesh_file") or "")
         if not f.exists():
-            raise PartError(f"Meshbestand ontbreekt: {f}")
+            raise PartError(f"Mesh file missing: {f}")
         m = trimesh.load(f, force="mesh")
         V = np.asarray(m.vertices, dtype=np.float64)
         F = np.asarray(m.faces, dtype=np.int64)
@@ -431,11 +431,11 @@ def exportable_meshes(proj: Project, only: list[str] | None = None, include_hidd
             continue
         e = proj.build(spec["name"])
         if not e["info"].get("ok"):
-            raise PartError(f"Part '{spec['name']}' bouwt niet: {e['info'].get('error')}")
+            raise PartError(f"Part '{spec['name']}' fails to build: {e['info'].get('error')}")
         V, F = e["mesh"]
         out.append((spec, V, F))
     if not out:
-        raise PartError("Niets om te exporteren (geen zichtbare/exporteerbare parts)")
+        raise PartError("Nothing to export (no visible/exportable parts)")
     return out
 
 
@@ -445,13 +445,13 @@ def ensure_demo() -> None:
         return
     proj = get_project("demo")
     proj.set_params({"w": 60, "d": 40, "h": 18, "wall": 2.0})
-    proj.upsert_part("bakje", color="#F2F2F2", filament=1, code=(
+    proj.upsert_part("tray", color="#F2F2F2", filament=1, code=(
         "body = Box(w, d, h, align=(Align.CENTER, Align.CENTER, Align.MIN))\n"
         "body = fillet(body.edges().filter_by(Axis.Z), 4)\n"
         "body = offset(body, amount=-wall, openings=body.faces().sort_by(Axis.Z)[-1])\n"
-        "result = body - part('tekst')\n"))
-    proj.upsert_part("tekst", color="#D62828", filament=2, code=(
-        "# Plane.XZ kijkt naar -Y (voorkant). Inleg van 0.8 mm, vlak met de voorwand.\n"
+        "result = body - part('label')\n"))
+    proj.upsert_part("label", color="#D62828", filament=2, code=(
+        "# Plane.XZ faces -Y (the front). 0.8 mm inlay, flush with the front wall.\n"
         "label = Plane.XZ.offset(d/2 - 0.8) * Text('XMAS', font_size=9)\n"
         "result = Pos(0, 0, h/2) * extrude(label, amount=0.8)\n"))
     set_current_project("demo")

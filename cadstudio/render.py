@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Off-screen preview renderer so Claude can *see* what it modelled.
 
 Pure numpy z-buffer renderer (orthographic): triangles are densely point-sampled, depth-tested per pixel,
@@ -169,7 +170,7 @@ def render_png(proj: Project, view: str = "grid", parts: list[str] | None = None
     """view: one of VIEWS, or 'grid' (iso / front / top / right in 2x2)."""
     items, errors = _collect(proj, parts)
     if not items:
-        raise ValueError("Niets te renderen" + (": " + "; ".join(errors) if errors else ""))
+        raise ValueError("Nothing to render" + (": " + "; ".join(errors) if errors else ""))
     tris = np.vstack([V[F] for _, V, F in items]).astype(np.float64)
     cols = np.vstack([np.repeat(_hex(s["color"])[None], len(F), 0) for s, _, F in items])
     light = cols.mean(1) > 225  # white filament: tint slightly so it reads on the light background
@@ -197,7 +198,7 @@ def render_png(proj: Project, view: str = "grid", parts: list[str] | None = None
     title = f"{proj.name}   {sz[0]:.1f} × {sz[1]:.1f} × {sz[2]:.1f} mm   ({len(items)} part{'s' if len(items) != 1 else ''})"
     draw.text((10, 8), title, fill=(30, 33, 38), font=f_big)
     if errors:
-        draw.text((10, canvas.height - 22), "FOUT: " + "; ".join(errors)[:150], fill=(200, 30, 40), font=f_small)
+        draw.text((10, canvas.height - 22), "ERROR: " + "; ".join(errors)[:150], fill=(200, 30, 40), font=f_small)
     buf = io.BytesIO()
     canvas.save(buf, format="PNG", optimize=True)
     return buf.getvalue(), errors

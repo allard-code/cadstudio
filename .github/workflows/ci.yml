@@ -1,0 +1,57 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: tests (py${{ matrix.python }}, mcp ${{ matrix.mcp }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { python: "3.11", mcp: "latest" }
+          - { python: "3.13", mcp: "latest" }
+          - { python: "3.12", mcp: "1.x" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: System libraries for OpenCASCADE
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1 fonts-dejavu-core
+      - name: Install
+        run: |
+          pip install -e ".[dev]"
+          if [ "${{ matrix.mcp }}" = "1.x" ]; then pip install "mcp>=1.2,<2"; fi
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: pytest -q
+
+  docker:
+    name: docker build (no push)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: cadstudio:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test
+        run: |
+          docker run -d --name cs -p 8765:8765 -e CADSTUDIO_TOKEN=ci cadstudio:ci
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:8765/health && break; sleep 2; done
+          curl -fs http://127.0.0.1:8765/health
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/api/project)" = "401"
+          curl -fs -H "Authorization: Bearer ci" http://127.0.0.1:8765/api/project | grep -q '"tray"'
+          docker logs cs

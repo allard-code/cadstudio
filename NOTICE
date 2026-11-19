@@ -1,0 +1,11 @@
+CAD-Studio
+Copyright (C) 2026 allard-code
+
+This program is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version. See LICENSE.
+
+Third-party components:
+- three.js r170 (MIT License), bundled in cadstudio/static/vendor/ – see cadstudio/static/vendor/THREE_LICENSE
+- build123d (Apache License 2.0) and OCP / OpenCASCADE Technology (LGPL-2.1 with exception) – installed as dependencies
+- MCP Python SDK (MIT), FastAPI (MIT), Uvicorn (BSD-3-Clause), trimesh (MIT), NumPy (BSD-3-Clause), Pillow (MIT-CMU)

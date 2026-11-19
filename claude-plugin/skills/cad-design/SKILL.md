@@ -1,41 +1,41 @@
 ---
 name: cad-design
-description: Ontwerp 3D-printbare onderdelen in CAD-Studio (build123d) en exporteer multi-color 3MF voor de Kobra S1 + ACE Pro. Gebruik bij vragen om iets te ontwerpen, modelleren of printklaar te maken, of om een 3MF/STL/STEP te maken.
+description: Design 3D-printable parts in CAD-Studio (build123d) and export multi-colour 3MF for Orca/Bambu/Anycubic/Prusa slicers. Use when asked to design, model or make something print-ready, or to produce a 3MF/STL/STEP.
 ---
 
-# Ontwerpen met CAD-Studio
+# Designing with CAD-Studio
 
-Je werkt via de `cad-studio` MCP-tools op een server (meestal een Docker-container). De gebruiker kijkt live mee in de web-editor; `open_editor` geeft de URL.
+You work through the `cad-studio` MCP tools on a server (usually a Docker container). The user watches live in the web editor; `open_editor` returns the URL. Reply in the user's language.
 
-## Werkwijze
+## Workflow
 
-1. **Inventariseer**: `get_project` (of `new_project` voor iets nieuws). Lees `get_build123d_reference` als je de API niet zeker weet.
-2. **Maten als parameters**: alle hoofdmaten via `set_params` (bv. `L`, `B`, `H`, `wall`, `clearance`). Zo kan de gebruiker ze later met sliders aanpassen.
-3. **Eén part per kleur/onderdeel** met `set_part(name, code, color, filament)`. De code is build123d en wijst de vorm toe aan `result`. Gebruik `part("naam")` om naar een ander part te verwijzen.
-4. **Controleer altijd**:
-   - lees `ok`, `size`, `bbox_min/max` en `watertight` uit het antwoord van `set_part`;
-   - `render_preview()` en kijk echt naar het beeld: klopt de oriëntatie, staat tekst goed leesbaar, zit de inleg op de goede plek?
-   - herstel fouten aan de hand van de traceback vóór je verdergaat.
-5. **Exporteer** met `export_3mf()` (standaard één object, één extruder per part). Geef de gebruiker:
-   - de `download_url`;
-   - per ACE-slot welke kleur er in moet (`filament_slots`);
-   - eventuele `warnings` (bv. meer dan 4 slots).
+1. **Take stock**: `get_project` (or `new_project` for something new). Read `get_build123d_reference` if you're unsure about the API.
+2. **Dimensions as parameters**: put all main dimensions in `set_params` (e.g. `L`, `W`, `H`, `wall`, `clearance`) so the user can adjust them with sliders later.
+3. **One part per colour/component** with `set_part(name, code, color, filament)`. The code is build123d and assigns the shape to `result`. Use `part("name")` to reference another part.
+4. **Always verify**:
+   - read `ok`, `size`, `bbox_min/max` and `watertight` from the `set_part` response;
+   - call `render_preview()` and actually look at the image: is the orientation right, is text readable, is the inlay in the right place?
+   - fix errors using the traceback before continuing.
+5. **Export** with `export_3mf()` (default: one object, one extruder per part). Give the user:
+   - the `download_url`;
+   - which colour goes in which filament slot (`filament_slots`);
+   - any `warnings` (e.g. more than 4 slots).
 
-## Multi-color (ACE Pro)
+## Multi-colour (AMS / ACE Pro / MMU)
 
-- Een kleur = een part met een eigen `filament` (slot 1-4, 5-8 = tweede ACE).
-- Inleg: kleur-part maken en aftrekken van het basis-part: `result = body - part("tekst")`. Volumes mogen niet overlappen.
-- Kleurlagen ≥ 0.6 mm dik, details ≥ 0.4 mm breed.
+- One colour = one part with its own `filament` (slot 1-4, 5-8 = second unit).
+- Inlay: make the colour part and subtract it from the base: `result = body - part("label")`. Volumes must not overlap.
+- Colour layers ≥ 0.6 mm thick, details ≥ 0.4 mm wide.
 
-## Printbaarheid (FDM, 0.4 mm nozzle)
+## Printability (FDM, 0.4 mm nozzle)
 
-- Wanden ≥ 1.2 mm (liefst 1.6–2.0), plat vlak onderop, overhang ≤ 45° (chamfer onderaan i.p.v. fillet).
-- Passing tussen losse delen 0.2–0.3 mm per zijde. Past het model op het bed (250×250×250)? Gebruik `measure`.
+- Walls ≥ 1.2 mm (preferably 1.6–2.0), a flat face at the bottom, overhangs ≤ 45° (chamfer instead of fillet at the bottom).
+- Clearance between separate parts 0.2–0.3 mm per side. Does it fit the bed? Use `measure`.
 
-## Bestanden van de gebruiker
+## User files
 
-De server staat mogelijk niet op de pc van de gebruiker: lokale paden werken daar niet.
-- Laat de gebruiker het bestand uploaden in de editor (knop *Import*) of in de inbox-map zetten, en gebruik dan `list_inbox` + `import_mesh(file_path=...)`.
-- Of gebruik `import_mesh(url=...)` met een directe download-URL.
-- Vanuit Claude Code kan een lokaal bestand ook geüpload worden:
+The server may not be on the user's computer: local paths don't work there.
+- Ask the user to upload the file in the editor (*Import* button) or drop it in the inbox folder, then use `list_inbox` + `import_mesh(file_path=...)`.
+- Or use `import_mesh(url=...)` with a direct download URL.
+- From Claude Code a local file can also be uploaded:
   `curl -H "Authorization: Bearer $CADSTUDIO_TOKEN" -F file=@model.stl "$CADSTUDIO_URL/api/import"`

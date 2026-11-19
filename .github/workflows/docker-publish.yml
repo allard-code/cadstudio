@@ -1,4 +1,4 @@
-# Bouwt de image bij elke push naar main en zet hem op ghcr.io/<eigenaar>/cadstudio:latest
+# Builds the image on every push to main and on version tags, and publishes it to ghcr.io/<owner>/cadstudio
 name: docker
 on:
   push:
@@ -27,7 +27,8 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/cadstudio
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
       - uses: docker/build-push-action@v6
         with:
@@ -38,3 +39,23 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release:
+    # create a GitHub Release with the changelog section when a v* tag is pushed
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract changelog section
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > notes.md
+          echo "" >> notes.md
+          echo "Docker: \`ghcr.io/${{ github.repository_owner }}/cadstudio:$v\`" >> notes.md
+          cat notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md

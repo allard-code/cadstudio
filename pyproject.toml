@@ -1,12 +1,24 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "cadstudio"
-version = "0.2.0"
-description = "Parametrische CAD-editor + MCP-server voor Claude, export naar multi-color 3MF (Anycubic Slicer Next / Orca / Prusa)"
-requires-python = ">=3.10"
+version = "0.3.0"
+description = "Parametric CAD editor + MCP server for Claude, with multi-colour 3MF export for Orca/Bambu/Anycubic/Prusa slicers"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "allard-code" }]
+requires-python = ">=3.11"
+keywords = ["cad", "3d-printing", "mcp", "claude", "build123d", "3mf", "multi-material", "orcaslicer"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+  "Topic :: Multimedia :: Graphics :: 3D Modeling",
+  "Topic :: Scientific/Engineering",
+  "Framework :: FastAPI",
+]
 dependencies = [
   "build123d>=0.9",
   "mcp>=1.2",
@@ -18,6 +30,14 @@ dependencies = [
   "pillow>=10",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx", "ruff"]
+
+[project.urls]
+Homepage = "https://github.com/allard-code/cadstudio"
+Issues = "https://github.com/allard-code/cadstudio/issues"
+Changelog = "https://github.com/allard-code/cadstudio/blob/main/CHANGELOG.md"
+
 [project.scripts]
 cadstudio = "cadstudio.__main__:main"
 
@@ -25,4 +45,16 @@ cadstudio = "cadstudio.__main__:main"
 packages = ["cadstudio"]
 
 [tool.setuptools.package-data]
-cadstudio = ["cheatsheet.md", "static/*", "static/vendor/*", "static/vendor/addons/controls/*"]
+cadstudio = ["cheatsheet.md", "static/*", "static/vendor/*", "static/vendor/addons/controls/*", "static/vendor/addons/utils/*"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+extend-exclude = ["cadstudio/static"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E402", "E731"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

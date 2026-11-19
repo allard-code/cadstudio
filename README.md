@@ -1,182 +1,163 @@
 # CAD-Studio
 
-CAD-Studio is een parametrische CAD-editor (build123d / OpenCascade, de geometrische kern van FreeCAD) met een 3D-editor in de browser en een **MCP-server**. Claude kan er 3D-printbare modellen mee ontwerpen, ze zelf bekijken en ze exporteren als **multi-color 3MF** voor Anycubic Slicer Next (Kobra S1 + ACE Pro). Orca, Bambu Studio en PrusaSlicer worden ook ondersteund.
+[![CI](https://github.com/allard-code/cadstudio/actions/workflows/ci.yml/badge.svg)](https://github.com/allard-code/cadstudio/actions/workflows/ci.yml)
+[![Docker](https://github.com/allard-code/cadstudio/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/allard-code/cadstudio/pkgs/container/cadstudio)
+[![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+
+🇳🇱 [Nederlandse versie](README.nl.md)
+
+**CAD-Studio** is a self-hosted parametric CAD editor with an **MCP server**, so Claude can design 3D-printable parts for you, check them visually and export them as **multi-colour 3MF**. The 3MF works in Orca-based slicers (OrcaSlicer, Bambu Studio, Anycubic Slicer Next) and in PrusaSlicer. Geometry is real B-rep CAD (build123d on OpenCASCADE), not meshes.
+
+![CAD-Studio editor](docs/screenshot.png)
 
 ```
  Claude Code / Desktop / claude.ai ──MCP (HTTP /mcp)──►┐
-                                                       │  CAD-Studio container  ── /data (projecten, exports, inbox)
- jij, overal (browser, telefoon)   ──https (editor /)──►┘
+                                                       │  CAD-Studio container ── /data (projects, exports, inbox)
+ you, anywhere (browser, phone)    ──https (editor /)──►┘
 ```
 
-Eén proces levert alles:
-
-| Pad | Wat |
-|---|---|
-| `/` | web-editor (login met token) |
-| `/mcp` | MCP-server (streamable HTTP) voor Claude |
-| `/dl/...` | ondertekende downloadlinks voor exports, 72 uur geldig |
-| `/health` | healthcheck |
-
-Claude en jij werken in hetzelfde project. Wat Claude verandert, zie je direct in de editor, en andersom.
+- **Claude designs, you watch live.** Changes from Claude appear instantly in the browser editor, and you can tweak parameters, colours, code and position yourself.
+- **Parametric.** Dimensions are project parameters with sliders. Every part is a short build123d script.
+- **Claude can see its work.** `render_preview` returns a 4-view render, so Claude can check orientation, text and inlays.
+- **Multi-colour for AMS / ACE Pro / MMU.** One part per colour, each with its own filament slot. The export gives one object with a per-part extruder assignment.
+- **Clean meshes.** Watertight output, so the slicer doesn't need to "repair" anything. STL and STEP export too.
+- **Runs anywhere.** One Docker container: editor and MCP on one port, token auth, signed download links.
+- **Claude Code plugin** with a design skill. Installs in two commands.
 
 ---
 
-## 1. Draaien in Docker (aanbevolen)
-
-### Op je Docker-host (bijv. de DockerVM op Proxmox)
+## Quick start (Docker)
 
 ```bash
 git clone https://github.com/allard-code/cadstudio.git && cd cadstudio
 cp .env.example .env
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # plak dit als CADSTUDIO_TOKEN in .env
-nano .env                                                        # zet ook CADSTUDIO_PUBLIC_URL
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # put this in .env as CADSTUDIO_TOKEN
 docker compose up -d --build
 ```
 
-Open daarna `http://<ip-van-de-host>:8765` en log in met het token. Het bouwen duurt de eerste keer een paar minuten; de image wordt ca. 1 GB, vooral door OpenCascade.
+Open `http://<host>:8765` and sign in with the token.
 
-### Via Portainer
+**Without building yourself:** use the prebuilt image `ghcr.io/allard-code/cadstudio:latest`. Replace `build: .` with `image: ...` in `docker-compose.yml`; this also works as a Portainer stack.
 
-- **Stacks → Add stack → Repository**: URL van je git-repo, compose-pad `docker-compose.yml`. Zet onder *Environment variables* `CADSTUDIO_TOKEN` en `CADSTUDIO_PUBLIC_URL`.
-- Of gebruik de kant-en-klare image. Na de eerste push naar GitHub bouwt de meegeleverde Action (`.github/workflows/docker-publish.yml`) `ghcr.io/allard-code/cadstudio:latest`. Vervang in de compose `build: .` door `image: ghcr.io/allard-code/cadstudio:latest`, plak de compose in de web-editor van Portainer en klaar. Is het package privé, maak het dan publiek of voeg GHCR toe als registry in Portainer.
-
-### Data
-
-Alles staat in het volume `./data` (in de container: `/data`):
-
-```
-data/
-├── projects/<project>/project.json   ontwerp (parameters + code per onderdeel)
-├── projects/<project>/exports/       3MF / STL / STEP
-├── projects/<project>/meshes/        geïmporteerde referentiemodellen
-└── inbox/                            zet hier STL/3MF neer om te importeren
-```
-
-Tip: koppel `data/` ook aan FileBrowser of een Samba-share. Dan zet je MakerWorld-downloads in `inbox/` en haal je exports direct op. De container draait als `PUID`/`PGID` (standaard 1000:1000) en zet de rechten op `/data` zelf goed.
-
-### Instellingen (environment)
-
-| Variabele | Standaard | Doel |
+| Variable | Default | Purpose |
 |---|---|---|
-| `CADSTUDIO_TOKEN` | – (verplicht in compose) | toegang tot editor én `/mcp` |
-| `CADSTUDIO_PUBLIC_URL` | `http://localhost:8765` | adres in downloadlinks die Claude teruggeeft |
-| `CADSTUDIO_PORT` | `8765` | poort in de container |
-| `PUID` / `PGID` | `1000` | eigenaar van de bestanden in `data/` |
+| `CADSTUDIO_TOKEN` | – (required in compose) | access to the editor **and** `/mcp` |
+| `CADSTUDIO_PUBLIC_URL` | `http://localhost:8765` | base URL used in download links returned to Claude |
+| `CADSTUDIO_PORT` | `8765` | port inside the container |
+| `PUID` / `PGID` | `1000` | owner of the files in `data/` |
 
----
+Data lives in `./data` (`/data` in the container):
 
-## 2. Koppelen aan Claude Code
+```
+data/projects/<project>/project.json   the design: parameters + code per part
+data/projects/<project>/exports/       3MF / STL / STEP
+data/projects/<project>/meshes/        imported reference models
+data/inbox/                            drop STL/3MF files here to import them
+```
 
-### Optie A – als plugin (makkelijkst, werkt in elk project)
+## Connect Claude
 
-Zet deze repo op GitHub. Doe daarna in Claude Code:
+### Claude Code – plugin (recommended)
 
 ```
 /plugin marketplace add allard-code/cadstudio
 /plugin install cad-studio@cadstudio
 ```
 
-Claude Code vraagt dan om de **CAD-Studio URL** (bijv. `http://192.168.1.50:8765`) en het **token**. Het token wordt versleuteld opgeslagen. De plugin bevat de MCP-koppeling en de skill `cad-design`, met de werkwijze voor printbare multi-color ontwerpen. Lokaal testen zonder GitHub kan ook: `/plugin marketplace add /pad/naar/cadstudio`.
+Claude Code asks for your server URL (e.g. `http://192.168.1.50:8765`) and the token, and stores the token securely. The plugin adds the MCP connection and the `cad-design` skill.
 
-### Optie B – één commando
+### Claude Code – single command
 
 ```bash
 claude mcp add --transport http --scope user cad-studio http://192.168.1.50:8765/mcp \
   --header "Authorization: Bearer <TOKEN>"
 ```
 
-### Optie C – in deze repo werken
+### claude.ai and the Claude mobile app
 
-De meegeleverde `.mcp.json` gebruikt de omgevingsvariabelen `CADSTUDIO_URL` en `CADSTUDIO_TOKEN`:
+Claude connects to custom connectors from Anthropic's cloud, so the server must be reachable over **public HTTPS**. Two ways to set that up:
+
+- a Cloudflare Tunnel;
+- a reverse proxy with your own domain.
+
+Then go to *Settings → Connectors → Add custom connector* and enter `https://cad.example.com/mcp`.
+
+- If your account has **Request headers** (beta), add `authorization: Bearer <TOKEN>` or `x-api-key: <TOKEN>`.
+- Otherwise use `https://cad.example.com/mcp?token=<TOKEN>`. Note that the token then appears in URLs and possibly in proxy logs, so use a long token.
+
+### Claude Desktop (local, no Docker)
 
 ```bash
-export CADSTUDIO_URL=http://192.168.1.50:8765
-export CADSTUDIO_TOKEN=<TOKEN>
-claude          # keur de server 'cad-studio' goed bij de eerste start
+python -m venv .venv && .venv/bin/pip install -e .        # Windows: .venv\Scripts\pip
 ```
 
-`CLAUDE.md` beschrijft de codebase, zodat Claude Code direct aan CAD-Studio zelf kan doorontwikkelen.
-
-**Lokale bestanden vanuit Claude Code** (de server staat elders, dus lokale paden werken daar niet). Upload ze zo:
-
-```bash
-curl -H "Authorization: Bearer $CADSTUDIO_TOKEN" -F file=@wagon.3mf "$CADSTUDIO_URL/api/import"
-```
-
----
-
-## 3. Overal ("digitaal") gebruiken
-
-| Situatie | Aanpak |
-|---|---|
-| Thuis op het netwerk | `http://<ip>:8765`, klaar. |
-| Onderweg, eigen apparaten (laptop, telefoon) | **Tailscale** op de Docker-host en je apparaten → `http://<tailscale-naam>:8765`. Geen poort open op je router; dit is het veiligst. |
-| Vanuit **claude.ai / Claude-app op je telefoon** | De server moet via **HTTPS publiek bereikbaar** zijn, want Claude maakt de verbinding vanuit de cloud van Anthropic. Gebruik een **Cloudflare Tunnel** (`cloudflared`, geen open poorten) of je bestaande reverse proxy met een eigen (sub)domein, bijv. `https://cad.jouwdomein.nl`. Zet `CADSTUDIO_PUBLIC_URL` op dat adres. |
-
-### Toevoegen als custom connector in claude.ai
-
-*Instellingen → Connectors → Add custom connector*, URL `https://cad.jouwdomein.nl/mcp`:
-
-- **Als je account "Request headers" heeft** (bèta, nog niet voor iedereen): header `authorization` = `Bearer <TOKEN>`, of `x-api-key` = `<TOKEN>`.
-- **Zonder request headers:** gebruik als URL `https://cad.jouwdomein.nl/mcp?token=<TOKEN>`. Dat werkt, maar het token staat dan in de URL en kan in logs van proxies terechtkomen. Gebruik daarom een lang token en vervang het als je twijfelt.
-
-Daarna werkt CAD-Studio ook in claude.ai en de mobiele app. De editor open je in de browser van je telefoon via dezelfde URL; je logt één keer in en de login wordt 90 dagen onthouden.
-
-> Zet de container nooit publiek zonder `CADSTUDIO_TOKEN`. Onderdeelcode is Python die in de container wordt uitgevoerd. Wie bij `/mcp` of de editor kan, kan dus code in de container draaien. De container draait zonder root-rechten en ziet alleen `/data`, maar behandel het token als een wachtwoord.
-
----
-
-## 4. Lokaal zonder Docker (Claude Desktop, stdio)
-
-```powershell
-python -m venv .venv
-.venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
-pip install -e .
-python -m cadstudio web           # editor op http://127.0.0.1:8765 (zonder login)
-```
-
-Claude Desktop (`claude_desktop_config.json`, zie `claude_desktop_config.example.json`):
+Add this to `claude_desktop_config.json` (see `claude_desktop_config.example.json`):
 
 ```json
-{ "mcpServers": { "cad-studio": {
-    "command": "C:\\Users\\<jij>\\cadstudio\\.venv\\Scripts\\python.exe",
-    "args": ["-m", "cadstudio", "mcp"] } } }
+{ "mcpServers": { "cad-studio": { "command": "/path/to/.venv/bin/python", "args": ["-m", "cadstudio", "mcp"] } } }
 ```
 
-In deze modus start de MCP-server de editor zelf mee.
+In stdio mode the editor starts automatically on `http://127.0.0.1:8765`.
 
----
+## Using it
 
-## Wat je Claude kunt vragen
+Example prompts:
 
-- *"Maak een bakje van 80×50×30 mm met 2 mm wand, afgeronde hoeken en mijn naam in rood als inleg op de voorkant. Exporteer als 3MF."*
-- *"Importeer wagon.3mf uit de inbox als referentie en ontwerp een lading die er met 0,3 mm speling in past."*
-- *"Maak de wand 1,6 mm en de tekst groter, en laat een preview zien."*
+- *"Make an 80×50×30 mm tray with 2 mm walls, rounded corners and my name as a red inlay on the front. Export as 3MF."*
+- *"Import wagon.3mf from the inbox as a reference and design cargo that fits inside with 0.3 mm clearance."*
+- *"Make the walls 1.6 mm and the text bigger, then show me a preview."*
 
-Tools die Claude heeft: `get_project`, `new_project`, `open_project`, `set_params`, `set_part`, `update_part`, `add_primitive`, `delete_part`, `measure`, `render_preview` (Claude ziet zelf een render met 4 aanzichten), `list_inbox`, `import_mesh` (inbox / URL), `export_3mf`, `export_stl` en `export_step` (allemaal met downloadlink), `get_build123d_reference` en `open_editor`.
+**MCP tools:**
 
-## De editor
-
-| Onderdeel | Wat het doet |
+| Group | Tools |
 |---|---|
-| Parameters | Variabelen voor alle code (sliders). Hiermee pas je het hele model aan. |
-| Onderdelen | Eén onderdeel per kleur of stuk. Oog = zichtbaar, `F2` = filament/ACE-slot. |
-| Inspector | Naam, kleur, ACE-slot, positie/rotatie, build123d-code (**Ctrl+Enter** = bouwen), maten, volume, grammen, waterdicht-check. |
-| 3D-view | Draaien (links), pannen (rechts), zoomen (scroll), klik = selecteren. **G** = verplaatsen, **X** = X-ray, **E** = randen, **F** = passend. |
-| Export | 3MF voor *Anycubic/Orca* of *PrusaSlicer*, als 1 multi-color object of losse objecten. Ook STL en STEP. |
-| Import | STL/3MF/OBJ als referentie (wordt gecentreerd op het bed). |
+| Projects | `list_projects`, `new_project`, `open_project`, `get_project`, `set_notes` |
+| Modelling | `set_params`, `set_part`, `update_part`, `add_primitive`, `delete_part` |
+| Inspecting | `measure`, `render_preview` |
+| Import | `list_inbox`, `import_mesh` (inbox file or URL) |
+| Export | `export_3mf`, `export_stl`, `export_step` (each with a download link) |
+| Help | `get_build123d_reference`, `open_editor` |
 
-## Multi-color voor de ACE Pro
+**Editor:**
 
-- **Elke kleur is een eigen onderdeel** met een `filament`-nummer (slot 1–4; 5–8 bij een tweede ACE).
-- **Inleg:** trek het kleuronderdeel af van het basisonderdeel (`result = body - part("tekst")`). Zo overlappen de volumes niet.
-- **Export "1 object (multi-color)"** geeft elk deel een eigen extruder in `Metadata/model_settings.config`, zoals Bambu Studio en Orca dat ook opslaan. Neemt de slicer de toewijzing niet over, kies dan "losse objecten" of STL's en wijs de slots handmatig toe.
-- Bij export controleert CAD-Studio of je meer dan 4 slots gebruikt, of dat één slot onderdelen met verschillende kleuren heeft.
+- Orbit, pan and zoom the view; click a part to select it.
+- Keyboard shortcuts:
 
-## Beperkingen
+  | Key | Action |
+  |---|---|
+  | **G** | move the selected part with arrows |
+  | **X** | X-ray view |
+  | **E** | show edges |
+  | **F** | fit to view |
+  | **Ctrl+Enter** | build the code |
 
-- Geen volledige Fusion 360: geen sketch-constraints, tijdlijn of joints. Je modelleert met code en parameters, en juist dat kan Claude goed.
-- Geïmporteerde meshes kun je verplaatsen, meten en exporteren, maar je kunt er geen booleans mee doen.
-- De Docker-image is alleen voor `linux/amd64` gebouwd.
+- The UI is in English and Dutch; switch with the EN/NL selector.
 
-Gebaseerd op build123d (Apache-2.0), three.js (MIT, meegeleverd in `static/vendor`), FastAPI en de MCP Python SDK.
+### Multi-colour
+
+- Every colour is its own part with a `filament` slot (1–4; 5–8 for a second unit).
+- For inlays, subtract the colour part from the base part (`result = body - part("label")`) so the volumes don't overlap.
+- *Export 3MF → "1 object (multi-colour)"* writes one object with a per-part extruder in `Metadata/model_settings.config`, the same layout Bambu Studio and OrcaSlicer use. If your slicer doesn't pick up the assignment, export *separate objects* or STLs and assign the filaments manually.
+
+## Security
+
+**Part code is Python and runs inside the container.** Anyone who can reach the editor or `/mcp` can run code there, so:
+
+- treat `CADSTUDIO_TOKEN` like a password;
+- never expose the server without a token.
+
+The container runs as a non-root user and only writes to `/data`. For remote access, a VPN such as Tailscale is the safest option. See [SECURITY.md](SECURITY.md).
+
+## Limitations
+
+- Not a full replacement for Fusion 360: there are no sketch constraints, timeline or assembly joints. Modelling is code plus parameters, which is exactly what Claude is good at.
+- Imported meshes can be moved, measured and exported, but not used in booleans.
+- The Docker image is built for `linux/amd64`.
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), which covers the dev setup, tests, code style and how to add a UI language. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+CAD-Studio is free software, licensed under the [GNU General Public License v3.0 or later](LICENSE). Bundled and used third-party components and their licenses are listed in [NOTICE](NOTICE).
