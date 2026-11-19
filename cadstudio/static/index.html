@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>CAD-Studio</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpath d=%22M8 1l7 7-7 7-7-7z%22 fill=%22%23ff8a3d%22/%3E%3C/svg%3E">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/style.css">
+<script type="importmap">
+{ "imports": {
+    "three": "/static/vendor/three.module.js",
+    "three/addons/": "/static/vendor/addons/"
+} }
+</script>
+</head>
+<body>
+<header>
+  <div class="brand">◆ CAD-Studio</div>
+  <select id="projectSelect" title="Project"></select>
+  <button id="newProject" title="Nieuw project">＋ Project</button>
+  <span class="sep"></span>
+  <div class="group">
+    <button data-add="box">▭ Box</button>
+    <button data-add="cylinder">◯ Cilinder</button>
+    <button data-add="sphere">● Bol</button>
+    <button data-add="text">T Tekst</button>
+    <button data-add="code">{ } Code</button>
+    <label class="btn" title="STL/3MF/OBJ importeren als referentie">⤓ Import<input type="file" id="importFile" accept=".stl,.3mf,.obj" hidden></label>
+  </div>
+  <span class="grow"></span>
+  <div class="group">
+    <select id="exportFlavor" title="Slicer">
+      <option value="orca">Anycubic / Orca</option>
+      <option value="prusa">PrusaSlicer</option>
+    </select>
+    <select id="exportMode" title="Indeling">
+      <option value="assembly">1 object (multi-color)</option>
+      <option value="objects">losse objecten</option>
+    </select>
+    <button id="export3mf" class="primary">Exporteer 3MF</button>
+    <button id="exportStl">STL</button>
+    <button id="exportStep">STEP</button>
+  </div>
+  <span id="live" class="live" title="Live verbonden: wijzigingen van Claude verschijnen direct">● live</span>
+</header>
+
+<main>
+  <aside id="left">
+    <section>
+      <h3>Parameters <button id="addParam" class="mini" title="Parameter toevoegen">＋</button></h3>
+      <div id="params"></div>
+    </section>
+    <section class="fill">
+      <h3>Onderdelen</h3>
+      <div id="parts"></div>
+    </section>
+    <section>
+      <h3>Notities</h3>
+      <textarea id="notes" rows="4" placeholder="Eisen, maten, ideeën… (Claude leest dit ook)"></textarea>
+    </section>
+  </aside>
+
+  <div id="viewport">
+    <div id="viewbar">
+      <button data-view="iso">Iso</button>
+      <button data-view="front">Voor</button>
+      <button data-view="top">Boven</button>
+      <button data-view="right">Rechts</button>
+      <button data-view="fit">Passend</button>
+      <span class="sep"></span>
+      <button id="toggleMove" title="Verplaats geselecteerd onderdeel met pijlen (G)">✥ Verplaats</button>
+      <button id="toggleXray" title="Doorzichtig (X)">◐ X-ray</button>
+      <button id="toggleEdges" title="Randen (E)">▦ Randen</button>
+      <button id="toggleBed" title="Printbed tonen">▤ Bed</button>
+    </div>
+    <div id="dims"></div>
+    <div id="toast"></div>
+  </div>
+
+  <aside id="right">
+    <div id="inspector" class="empty">
+      <p class="hint">Selecteer een onderdeel in de lijst of in de 3D-view.</p>
+      <div class="howto">
+        <h4>Werken met Claude</h4>
+        <p>Vraag in Claude Desktop/Code bijvoorbeeld:</p>
+        <code>Maak een bakje van 80×50×30 mm met 2 mm wand, afgeronde hoeken en mijn naam in rood als inleg op de voorkant. Exporteer als 3MF.</code>
+        <p>Wijzigingen van Claude verschijnen hier live. Jij kunt daarna parameters, kleuren en code aanpassen.</p>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<template id="inspectorTpl">
+  <div class="row"><label>Naam</label><input id="pName"></div>
+  <div class="row two">
+    <div><label>Kleur</label><input id="pColor" type="color"></div>
+    <div><label>Filament / ACE-slot</label>
+      <select id="pFilament"></select></div>
+  </div>
+  <div class="row checks">
+    <label><input type="checkbox" id="pVisible"> zichtbaar</label>
+    <label><input type="checkbox" id="pExport"> exporteren</label>
+  </div>
+  <div class="row"><label>Positie (mm) &amp; rotatie (°) — na de code toegepast</label>
+    <div class="loc">
+      <input data-i="0" title="X"><input data-i="1" title="Y"><input data-i="2" title="Z">
+      <input data-i="3" title="rot X"><input data-i="4" title="rot Y"><input data-i="5" title="rot Z">
+    </div>
+  </div>
+  <div class="row codewrap">
+    <label>build123d-code <span class="muted">(Ctrl+Enter = bouwen, wijs toe aan <b>result</b>)</span></label>
+    <textarea id="pCode" spellcheck="false"></textarea>
+    <div class="actions">
+      <button id="pRun" class="primary">▶ Bouwen</button>
+      <button id="pDup">Dupliceren</button>
+      <button id="pDel" class="danger">Verwijderen</button>
+    </div>
+  </div>
+  <div id="pInfo" class="info"></div>
+</template>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

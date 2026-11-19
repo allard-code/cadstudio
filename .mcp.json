@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cad-studio": {
+      "type": "http",
+      "url": "${CADSTUDIO_URL:-http://localhost:8765}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${CADSTUDIO_TOKEN:-}"
+      }
+    }
+  }
+}

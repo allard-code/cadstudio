@@ -1,0 +1,21 @@
+{
+  "name": "cad-studio",
+  "version": "0.2.0",
+  "description": "Ontwerp 3D-printbare onderdelen met Claude via je eigen CAD-Studio-server, met export naar multi-color 3MF (Anycubic Slicer Next / Orca / Bambu / Prusa).",
+  "author": {
+    "name": "CAD-Studio"
+  },
+  "userConfig": {
+    "server_url": {
+      "type": "string",
+      "title": "CAD-Studio URL",
+      "description": "Adres van je CAD-Studio-container zonder /mcp, bv. http://192.168.1.50:8765 of https://cad.jouwdomein.nl"
+    },
+    "token": {
+      "type": "string",
+      "title": "Toegangstoken",
+      "description": "De waarde van CADSTUDIO_TOKEN uit je .env",
+      "sensitive": true
+    }
+  }
+}
