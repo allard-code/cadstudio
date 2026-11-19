@@ -37,6 +37,11 @@ def test_token_auth(client, monkeypatch):
     assert client.get("/api/project", headers={"Authorization": "Bearer s3cret"}).status_code == 200
     assert client.get("/api/project", headers={"x-api-key": "s3cret"}).status_code == 200
     assert client.get("/api/project", headers={"Authorization": "Bearer wrong"}).status_code == 401
+    assert client.get("/api/project", headers={"Authorization": "s3cret"}).status_code == 200  # bare token
+    assert client.get("/api/project", headers={"Authorization": "Basic s3cret"}).status_code == 401
+    # no OAuth: discovery endpoints say "not found", not "unauthorized"
+    assert client.get("/.well-known/oauth-protected-resource/mcp").status_code == 404
+    assert client.get("/.well-known/oauth-authorization-server").status_code == 404
     # form login sets a cookie
     r = client.post("/login", data={"token": "s3cret"}, follow_redirects=False)
     assert r.status_code == 303 and "cs_token" in r.cookies

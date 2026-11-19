@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+- claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.
+- An `Authorization` header with just the token (without `Bearer `) is accepted.
+
 ### Changed
 - The container stops within a few seconds even when an editor tab is open (open live-update streams no longer block shutdown).
 - Docker healthcheck requests (`/health`) are no longer written to the access log.

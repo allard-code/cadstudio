@@ -67,15 +67,19 @@ app.router.routes.extend(_mcp_sub.routes)
 
 # --------------------------------------------------------------------------- auth
 
-OPEN_PATHS = ("/static/", "/dl/", "/health", "/login", "/favicon.ico")
+# /.well-known: there is no OAuth here; answering 404 (not 401) tells MCP clients such as claude.ai
+# that no OAuth sign-in is needed, so they just send the configured header.
+OPEN_PATHS = ("/static/", "/dl/", "/health", "/login", "/favicon.ico", "/.well-known/")
 
 LOGIN_HTML = (STATIC / "login.html").read_text(encoding="utf-8")
 
 
 def _token_from(request: Request) -> str | None:
-    auth = request.headers.get("authorization", "")
+    auth = request.headers.get("authorization", "").strip()
     if auth.lower().startswith("bearer "):
         return auth[7:].strip()
+    if auth and " " not in auth:  # bare token in the Authorization header (common connector misconfiguration)
+        return auth
     return (request.headers.get("x-api-key") or request.headers.get("x-auth-token")
             or request.cookies.get("cs_token") or request.query_params.get("token"))
 
