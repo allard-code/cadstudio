@@ -89,3 +89,17 @@ def test_project_is_persisted_and_reloaded(proj):
     again = P.get_project(proj.name)
     assert again.find("a")["color"] == "#123456"
     assert again.rev >= 1
+
+
+def test_import_3mf_and_obj(proj, tmp_path):
+    """3MF import needs trimesh's optional deps (networkx, lxml) – make sure they are installed."""
+    from cadstudio.export3mf import export_3mf
+
+    proj.upsert_part("a", code=BOX)
+    path = export_3mf(proj)["path"]
+    proj.import_mesh("from3mf", path)
+    obj = tmp_path / "cube.obj"
+    trimesh.creation.box((4, 4, 4)).export(obj)
+    proj.import_mesh("fromobj", obj)
+    assert proj.build("from3mf")["info"]["size"] == [20.0, 10.0, 5.0]
+    assert proj.build("fromobj")["info"]["size"] == [4.0, 4.0, 4.0]

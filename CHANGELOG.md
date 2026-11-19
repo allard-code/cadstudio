@@ -16,6 +16,9 @@ First public release.
 - Docker image smoke test in CI; releases create versioned images (`ghcr.io/allard-code/cadstudio:0.3.0`) and a GitHub Release.
 - Contributing guide, security policy, issue and pull request templates.
 
+### Fixed
+- Importing 3MF files failed in clean installs: `networkx` and `lxml` are now dependencies.
+
 ### Changed
 - Editor shading uses creased normals: flat faces stay flat, curved faces stay smooth.
 - Demo project parts are now called `tray` and `label`.
