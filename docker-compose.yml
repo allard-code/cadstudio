@@ -4,7 +4,7 @@ services:
   cadstudio:
     build: .
     # Of zonder zelf te bouwen, na de GitHub Action (zie README):
-    # image: ghcr.io/<jouw-github-naam>/cadstudio:latest
+    # image: ghcr.io/allard-code/cadstudio:latest
     container_name: cadstudio
     restart: unless-stopped
     ports:

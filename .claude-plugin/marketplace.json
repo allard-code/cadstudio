@@ -1,7 +1,8 @@
 {
   "name": "cadstudio",
   "owner": {
-    "name": "CAD-Studio"
+    "name": "allard-code",
+    "url": "https://github.com/allard-code"
   },
   "metadata": {
     "description": "CAD-Studio: parametrische CAD + multi-color 3MF-export via MCP"

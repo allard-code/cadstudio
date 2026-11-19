@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "description": "Ontwerp 3D-printbare onderdelen met Claude via je eigen CAD-Studio-server, met export naar multi-color 3MF (Anycubic Slicer Next / Orca / Bambu / Prusa).",
   "author": {
-    "name": "CAD-Studio"
+    "name": "allard-code"
   },
   "userConfig": {
     "server_url": {
@@ -17,5 +17,6 @@
       "description": "De waarde van CADSTUDIO_TOKEN uit je .env",
       "sensitive": true
     }
-  }
+  },
+  "homepage": "https://github.com/allard-code/cadstudio"
 }

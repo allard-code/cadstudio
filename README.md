@@ -26,7 +26,7 @@ Claude en jij werken in hetzelfde project. Wat Claude verandert, zie je direct i
 ### Op je Docker-host (bijv. de DockerVM op Proxmox)
 
 ```bash
-git clone https://github.com/<jij>/cadstudio.git && cd cadstudio
+git clone https://github.com/allard-code/cadstudio.git && cd cadstudio
 cp .env.example .env
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # plak dit als CADSTUDIO_TOKEN in .env
 nano .env                                                        # zet ook CADSTUDIO_PUBLIC_URL
@@ -38,7 +38,7 @@ Open daarna `http://<ip-van-de-host>:8765` en log in met het token. Het bouwen d
 ### Via Portainer
 
 - **Stacks → Add stack → Repository**: URL van je git-repo, compose-pad `docker-compose.yml`. Zet onder *Environment variables* `CADSTUDIO_TOKEN` en `CADSTUDIO_PUBLIC_URL`.
-- Of gebruik de kant-en-klare image. Na de eerste push naar GitHub bouwt de meegeleverde Action (`.github/workflows/docker-publish.yml`) `ghcr.io/<jij>/cadstudio:latest`. Vervang in de compose `build: .` door `image: ghcr.io/<jij>/cadstudio:latest`, plak de compose in de web-editor van Portainer en klaar. Is het package privé, maak het dan publiek of voeg GHCR toe als registry in Portainer.
+- Of gebruik de kant-en-klare image. Na de eerste push naar GitHub bouwt de meegeleverde Action (`.github/workflows/docker-publish.yml`) `ghcr.io/allard-code/cadstudio:latest`. Vervang in de compose `build: .` door `image: ghcr.io/allard-code/cadstudio:latest`, plak de compose in de web-editor van Portainer en klaar. Is het package privé, maak het dan publiek of voeg GHCR toe als registry in Portainer.
 
 ### Data
 
@@ -72,7 +72,7 @@ Tip: koppel `data/` ook aan FileBrowser of een Samba-share. Dan zet je MakerWorl
 Zet deze repo op GitHub. Doe daarna in Claude Code:
 
 ```
-/plugin marketplace add <jij>/cadstudio
+/plugin marketplace add allard-code/cadstudio
 /plugin install cad-studio@cadstudio
 ```
 
