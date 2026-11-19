@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import hmac
 import json
+import logging
 import tempfile
 from pathlib import Path
 
@@ -66,7 +67,7 @@ app.router.routes.extend(_mcp_sub.routes)
 
 # --------------------------------------------------------------------------- auth
 
-OPEN_PATHS = ("/static/", "/dl/", "/health", "/login")
+OPEN_PATHS = ("/static/", "/dl/", "/health", "/login", "/favicon.ico")
 
 LOGIN_HTML = (STATIC / "login.html").read_text(encoding="utf-8")
 
@@ -290,5 +291,16 @@ def serve(host: str = "127.0.0.1", port: int = 8765, quiet: bool = False) -> Non
     import uvicorn
 
     P.ensure_demo()
+    logging.getLogger("uvicorn.access").addFilter(_HealthLogFilter())
     uvicorn.run(app, host=host, port=port, log_level="warning" if quiet else "info", access_log=not quiet,
-                proxy_headers=True, forwarded_allow_ips="*")
+                proxy_headers=True, forwarded_allow_ips="*",
+                # open editor tabs keep an SSE stream (/api/events) open forever; don't wait for them on shutdown
+                timeout_graceful_shutdown=3)
+
+
+class _HealthLogFilter(logging.Filter):
+    """Drop access-log lines for the Docker healthcheck (every 30 s) so real requests stay readable."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args if isinstance(record.args, tuple) else ()
+        return not (len(args) >= 3 and str(args[2]).startswith("/health"))

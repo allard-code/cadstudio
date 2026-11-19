@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+- The container stops within a few seconds even when an editor tab is open (open live-update streams no longer block shutdown).
+- Docker healthcheck requests (`/health`) are no longer written to the access log.
+
 ## [0.3.0] - 2026-11-19
 
 First public release.
