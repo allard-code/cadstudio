@@ -232,8 +232,13 @@ def dup_part(name: str):
     new, i = f"{name}_copy", 2
     while proj.has(new):
         new, i = f"{name}_copy{i}", i + 1
-    proj.upsert_part(new, **{k: v for k, v in spec.items() if k != "name"})
-    return proj.summary()
+    fields = {k: v for k, v in spec.items() if k != "name"}
+    loc = list(fields.get("location") or [0] * 6)
+    loc[0] += 10
+    loc[1] += 10  # offset so the copy doesn't sit exactly on top of the original
+    fields["location"] = loc
+    proj.upsert_part(new, **fields)
+    return {"new_name": new, **proj.summary()}
 
 
 @app.post("/api/import")

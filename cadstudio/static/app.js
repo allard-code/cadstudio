@@ -10,9 +10,10 @@ const S = {
   project: null,          // summary from server
   selected: null,         // part name
   meshes: new Map(),      // name -> {key, mesh, edges}
-  xray: false, edges: true, bed: true, move: false, resize: false,
+  xray: false, edges: true, bed: true, move: false, resize: false, rotate: false,
   dirtyCode: false, dirtyCommon: false,
 };
+const undoStack = []; const redoStack = []; const UNDO_LIMIT = 30;
 const $ = (s, r = document) => r.querySelector(s);
 const api = async (url, opts = {}) => {
   const r = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
@@ -64,7 +65,19 @@ tc.setSize(0.8);
 scene.add(tc.getHelper ? tc.getHelper() : tc);
 tc.addEventListener("dragging-changed", (e) => {
   controls.enabled = !e.value;
-  if (!e.value) { if (tc.getMode() === "scale") commitResize(); else commitMove(); }
+  if (!e.value) {
+    const mode = tc.getMode();
+    if (mode === "scale") commitResize();
+    else if (mode === "rotate") commitRotate();
+    else commitMove();
+  }
+});
+// hold Shift while dragging a gizmo handle to snap to coarse steps
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Shift") { tc.setTranslationSnap(10); tc.setRotationSnap(THREE.MathUtils.degToRad(15)); tc.setScaleSnap(0.1); }
+});
+window.addEventListener("keyup", (e) => {
+  if (e.key === "Shift") { tc.setTranslationSnap(null); tc.setRotationSnap(null); tc.setScaleSnap(null); }
 });
 
 function resize() {
@@ -174,12 +187,12 @@ function setView(v) {
   controls.target.copy(c); camera.position.copy(c.clone().add(dir.multiplyScalar(d)));
 }
 
-// ------------------------------------------------------------------ gizmo move/resize -> location/scale
+// ------------------------------------------------------------------ gizmo move/resize/rotate -> location/scale
 function attachGizmo() {
   const m = S.selected && S.meshes.get(S.selected);
-  if ((S.move || S.resize) && m && m.mesh.visible) {
+  if ((S.move || S.resize || S.rotate) && m && m.mesh.visible) {
     if (tc.object !== m.mesh) tc.attach(m.mesh);
-    tc.setMode(S.resize ? "scale" : "translate");
+    tc.setMode(S.rotate ? "rotate" : S.resize ? "scale" : "translate");
   } else tc.detach();
 }
 async function commitMove() {
@@ -187,7 +200,7 @@ async function commitMove() {
   const name = obj.userData.name; const p = S.project.parts.find((q) => q.name === name);
   const d = obj.position.clone().sub(obj.userData.base); if (d.lengthSq() < 1e-9) return;
   const loc = [...p.location]; loc[0] += +d.x.toFixed(2); loc[1] += +d.y.toFixed(2); loc[2] += +d.z.toFixed(2);
-  await savePart(name, { location: loc });
+  pushUndo(name); await savePart(name, { location: loc });
   // the mesh is reloaded from the server with the new location baked in
 }
 async function commitResize() {
@@ -197,8 +210,29 @@ async function commitResize() {
   if (Math.abs(s.x - 1) < 1e-4 && Math.abs(s.y - 1) < 1e-4 && Math.abs(s.z - 1) < 1e-4) return;
   const cur = p.scale || [1, 1, 1];
   const next = [cur[0] * s.x, cur[1] * s.y, cur[2] * s.z].map((v) => +v.toFixed(3));
-  await savePart(name, { scale: next });
+  pushUndo(name); await savePart(name, { scale: next });
   // the mesh is reloaded from the server with the new scale baked into the geometry
+}
+async function commitRotate() {
+  const obj = tc.object; if (!obj) return;
+  const q = obj.quaternion;
+  const angle = 2 * Math.acos(Math.min(1, Math.abs(q.w)));
+  if (angle < 1e-4) return;  // no change
+  const name = obj.userData.name; const p = S.project.parts.find((qq) => qq.name === name);
+  // the part's existing rotation (location[3:5]) is already baked into the loaded geometry (the mesh itself
+  // starts at identity orientation), so the gizmo's quaternion is a pure delta on top of it - compose them
+  // with the same axis-order convention as build123d's Rot(rx,ry,rz) (three.js Euler order "ZYX" matches it).
+  const existing = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+    THREE.MathUtils.degToRad(p.location[3]), THREE.MathUtils.degToRad(p.location[4]), THREE.MathUtils.degToRad(p.location[5]), "ZYX",
+  ));
+  const combined = q.clone().multiply(existing);
+  const e = new THREE.Euler().setFromQuaternion(combined, "ZYX");
+  const loc = [...p.location];
+  loc[3] = +THREE.MathUtils.radToDeg(e.x).toFixed(2);
+  loc[4] = +THREE.MathUtils.radToDeg(e.y).toFixed(2);
+  loc[5] = +THREE.MathUtils.radToDeg(e.z).toFixed(2);
+  pushUndo(name); await savePart(name, { location: loc });
+  // the mesh is reloaded from the server with the new rotation baked into the geometry (back to identity here)
 }
 
 // ------------------------------------------------------------------ UI: params
@@ -246,7 +280,7 @@ function renderParts() {
       ${p.info.ok ? "" : '<span class="err" title="' + (p.info.error || "").replace(/"/g, "'") + '">⚠</span>'}
       <span class="slot" title="${t("parts.slot")}">F${p.filament}</span>`;
     d.onclick = (e) => { if (e.target.classList.contains("eye")) return; select(p.name); };
-    d.querySelector(".eye").onclick = () => savePart(p.name, { visible: !p.visible });
+    d.querySelector(".eye").onclick = () => { pushUndo(p.name); savePart(p.name, { visible: !p.visible }); };
     box.appendChild(d);
   }
   if (!S.project.parts.length) box.innerHTML = `<div class="muted">${t("parts.empty")}</div>`;
@@ -267,17 +301,17 @@ function renderInspector(force = false) {
     const fil = $("#pFilament");
     for (let i = 1; i <= 8; i++) fil.add(new Option(t(i <= 4 ? "slot.option" : "slot.second", { i }), i));
     $("#pName").onchange = (e) => savePart(p.name, { new_name: e.target.value.trim() }, e.target.value.trim());
-    $("#pColor").onchange = (e) => savePart(S.selected, { color: e.target.value });
-    $("#pFilament").onchange = (e) => savePart(S.selected, { filament: +e.target.value });
-    $("#pVisible").onchange = (e) => savePart(S.selected, { visible: e.target.checked });
-    $("#pExport").onchange = (e) => savePart(S.selected, { export: e.target.checked });
+    $("#pColor").onchange = (e) => { pushUndo(S.selected); savePart(S.selected, { color: e.target.value }); };
+    $("#pFilament").onchange = (e) => { pushUndo(S.selected); savePart(S.selected, { filament: +e.target.value }); };
+    $("#pVisible").onchange = (e) => { pushUndo(S.selected); savePart(S.selected, { visible: e.target.checked }); };
+    $("#pExport").onchange = (e) => { pushUndo(S.selected); savePart(S.selected, { export: e.target.checked }); };
     ins.querySelectorAll("[data-i]").forEach((inp) => inp.onchange = () => {
       const loc = [...ins.querySelectorAll("[data-i]")].map((i) => parseFloat(i.value) || 0);
-      savePart(S.selected, { location: loc });
+      pushUndo(S.selected); savePart(S.selected, { location: loc });
     });
     ins.querySelectorAll("[data-s]").forEach((inp) => inp.onchange = () => {
       const scale = [...ins.querySelectorAll("[data-s]")].map((i) => parseFloat(i.value) || 1);
-      savePart(S.selected, { scale });
+      pushUndo(S.selected); savePart(S.selected, { scale });
     });
     const code = $("#pCode");
     code.oninput = () => { S.dirtyCode = true; $("#pRun").classList.add("dirty"); };
@@ -286,7 +320,11 @@ function renderInspector(force = false) {
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runCode(); }
     };
     $("#pRun").onclick = runCode;
-    $("#pDup").onclick = async () => apply(await api(`/api/parts/${encodeURIComponent(S.selected)}/duplicate`, { method: "POST" }));
+    $("#pDup").onclick = async () => {
+      const res = await api(`/api/parts/${encodeURIComponent(S.selected)}/duplicate`, { method: "POST" });
+      if (res.new_name) S.selected = res.new_name;
+      await apply(res, true);
+    };
     $("#pDel").onclick = async () => {
       if (!confirm(t("insp.delete.confirm", { name: S.selected }))) return;
       const n = S.selected; S.selected = null;
@@ -324,7 +362,40 @@ $("#inspectorTpl").dataset.empty = $("#inspector").innerHTML;  // untranslated; 
 async function runCode() {
   const code = $("#pCode").value;
   S.dirtyCode = false;
+  pushUndo(S.selected);
   await savePart(S.selected, { code }, null, "keep");
+}
+
+// ------------------------------------------------------------------ undo/redo (location/scale/color/filament/
+// visibility/export/code - not rename, delete or create, to keep part identity stable across the stack)
+function snapshotPart(name) {
+  const p = S.project?.parts?.find((q) => q.name === name);
+  if (!p) return null;
+  return { color: p.color, filament: p.filament, visible: p.visible, export: p.export,
+    location: [...p.location], scale: [...(p.scale || [1, 1, 1])], code: p.code };
+}
+function refreshUndoButtons() {
+  if ($("#btnUndo")) $("#btnUndo").disabled = undoStack.length === 0;
+  if ($("#btnRedo")) $("#btnRedo").disabled = redoStack.length === 0;
+}
+function pushUndo(name) {
+  const snap = snapshotPart(name); if (!snap) return;
+  undoStack.push({ name, snap });
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack.length = 0;
+  refreshUndoButtons();
+}
+async function undo() {
+  const entry = undoStack.pop(); if (!entry) return;
+  const cur = snapshotPart(entry.name); if (cur) redoStack.push({ name: entry.name, snap: cur });
+  await savePart(entry.name, entry.snap, null, "keep");
+  refreshUndoButtons();
+}
+async function redo() {
+  const entry = redoStack.pop(); if (!entry) return;
+  const cur = snapshotPart(entry.name); if (cur) undoStack.push({ name: entry.name, snap: cur });
+  await savePart(entry.name, entry.snap, null, "keep");
+  refreshUndoButtons();
 }
 
 async function savePart(name, body, newSel = null, force = false) {
@@ -361,7 +432,7 @@ function apply(summary, force = false) {
   return applying;
 }
 
-async function reload() { await apply(await api("/api/project")); }
+async function reload() { await apply(await api("/api/project")); refreshUndoButtons(); }
 
 async function loadProjects() {
   const { projects, current } = await api("/api/projects");
@@ -436,16 +507,23 @@ $("#exportStep").onclick = () => doExport("step");
 // view bar
 document.querySelectorAll("[data-view]").forEach((b) => b.onclick = () => setView(b.dataset.view));
 const toggle = (key, btn) => { S[key] = !S[key]; btn.classList.toggle("on", S[key]); syncSceneProps(); };
-// move and resize share one gizmo, so turning one on turns the other off
-const toggleGizmoMode = (key, btn, otherKey, otherBtn) => {
-  S[key] = !S[key]; if (S[key]) { S[otherKey] = false; otherBtn.classList.remove("on"); }
-  btn.classList.toggle("on", S[key]); syncSceneProps();
+// move/resize/rotate share one gizmo, so turning one on turns the other two off
+const GIZMO_KEYS = ["move", "resize", "rotate"];
+const setGizmoMode = (key) => {
+  for (const k of GIZMO_KEYS) S[k] = k === key ? !S[k] : false;
+  $("#toggleMove").classList.toggle("on", S.move);
+  $("#toggleResize").classList.toggle("on", S.resize);
+  $("#toggleRotate").classList.toggle("on", S.rotate);
+  syncSceneProps();
 };
 $("#toggleXray").onclick = (e) => toggle("xray", e.currentTarget);
 $("#toggleEdges").onclick = (e) => toggle("edges", e.currentTarget);
 $("#toggleBed").onclick = (e) => toggle("bed", e.currentTarget);
-$("#toggleMove").onclick = (e) => toggleGizmoMode("move", e.currentTarget, "resize", $("#toggleResize"));
-$("#toggleResize").onclick = (e) => toggleGizmoMode("resize", e.currentTarget, "move", $("#toggleMove"));
+$("#btnUndo").onclick = undo;
+$("#btnRedo").onclick = redo;
+$("#toggleMove").onclick = () => setGizmoMode("move");
+$("#toggleResize").onclick = () => setGizmoMode("resize");
+$("#toggleRotate").onclick = () => setGizmoMode("rotate");
 $("#toggleEdges").classList.add("on"); $("#toggleBed").classList.add("on");
 window.addEventListener("keydown", (e) => {
   if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
@@ -453,9 +531,12 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "e") $("#toggleEdges").click();
   if (e.key === "g") $("#toggleMove").click();
   if (e.key === "s") $("#toggleResize").click();
+  if (e.key === "r") $("#toggleRotate").click();
   if (e.key === "f") setView("fit");
   if (e.key === "Escape") select(null);
   if (e.key === "Delete" && S.selected) $("#pDel")?.click();
+  if ((e.key === "z" || e.key === "Z") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  if (e.key === "d" && (e.ctrlKey || e.metaKey) && S.selected) { e.preventDefault(); $("#pDup")?.click(); }
 });
 
 // ------------------------------------------------------------------ live updates (Claude via MCP)

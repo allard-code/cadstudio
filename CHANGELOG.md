@@ -16,6 +16,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   mesh with your own geometry — the regular `+ - &` operators need a BRep solid, which an imported mesh doesn't
   have. `mesh_of(name)` returns a part's raw triangles. Closes the "imported meshes can't be used in booleans"
   limitation, for 3MF/STL/preview (not STEP, which needs a BRep solid).
+- Editor: a Rotate gizmo (toolbar button / `R`) next to Move/Resize, so rotation (already a `location` field) is
+  now editable with the mouse too. Holding Shift while dragging any of the three gizmos snaps to coarse steps
+  (10 mm / 15° / 0.1×). Duplicate now offsets the copy so it doesn't land exactly on top of the original, and
+  selects it. Undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`, also toolbar buttons) covers move/resize/rotate/colour/
+  filament/visibility/export/code edits.
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.
