@@ -90,6 +90,14 @@ inlay = Pos(0, 0, h/2) * extrude(label, amount=0.8)
   It runs once before each part's own code, in the same namespace, so its functions/variables are just
   available by name afterwards (no `part("...")` needed to reach them).
 
+## Importing a STEP file (real solid, not a mesh)
+`import_mesh("name", "file.step")` (same tool, dispatches on extension) gives a real BRep solid, unlike
+STL/3MF/OBJ/PLY/GLB imports. `part("stepname")` works normally, so it combines with code geometry via the
+regular `+ - &` operators, and can be exported to STEP again:
+```python
+result = part("bracket") - Cylinder(2, 20)   # "bracket" was imported from a .step file
+```
+
 ## Combining an imported mesh with your own geometry
 `part("name")` only works between build123d parts (it needs an OCCT solid); an imported mesh (from
 `import_mesh`) has none, so `part()` raises if you try. Use `mesh_boolean(a, b, op)` instead:

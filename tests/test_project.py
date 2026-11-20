@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import math
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -338,3 +339,73 @@ def test_restore_unknown_checkpoint_raises(proj):
 def test_checkpoint_empty_name_rejected(proj):
     with pytest.raises(P.PartError, match="empty"):
         proj.save_checkpoint("   ")
+
+
+def _step_file(tmp_path, name="cube.step", size=(10, 10, 10)):
+    import build123d as bd
+    f = tmp_path / name
+    bd.export_step(bd.Box(*size), str(f))
+    return f
+
+
+def test_import_step_is_a_real_brep_part(proj, tmp_path):
+    proj.import_step("ref", _step_file(tmp_path))
+    info = proj.build("ref")["info"]
+    assert info["ok"], info
+    assert info["size"] == [10.0, 10.0, 10.0]
+    assert proj.build("ref")["shape"] is not None  # unlike import_mesh - a usable BRep shape
+
+
+def test_import_step_can_be_used_in_normal_booleans(proj, tmp_path):
+    proj.import_step("ref", _step_file(tmp_path, size=(10, 10, 10)))
+    proj.upsert_part("hole", code='result = part("ref") - Cylinder(2, 20)')
+    info = proj.build("hole")["info"]
+    assert info["ok"], info
+    assert info["watertight"] is True
+    assert abs(info["volume_mm3"] - (1000 - math.pi * 4 * 10)) < 5  # only the box's own 10mm height is removed
+
+
+def test_import_step_exports_to_step(proj, tmp_path):
+    from cadstudio.export3mf import export_step
+
+    proj.import_step("ref", _step_file(tmp_path))
+    out = export_step(proj, only=["ref"])
+    assert Path(out["path"]).exists()
+
+
+def test_import_step_rejects_non_step_file(proj, tmp_path):
+    f = tmp_path / "cube.stl"
+    trimesh.creation.box((10, 10, 10)).export(f)
+    with pytest.raises(P.PartError, match="Not a STEP file"):
+        proj.import_step("ref", f)
+
+
+def test_import_file_dispatches_by_suffix(proj, tmp_path):
+    proj.import_file("stepref", _step_file(tmp_path))
+    assert proj.find("stepref")["type"] == "code"
+    assert proj.build("stepref")["shape"] is not None
+
+    f = tmp_path / "cube.stl"
+    trimesh.creation.box((10, 10, 10)).export(f)
+    proj.import_file("meshref", f)
+    assert proj.find("meshref")["type"] == "mesh"
+
+
+def test_import_step_cache_invalidates_when_file_changes(proj, tmp_path):
+    f = _step_file(tmp_path, size=(10, 10, 10))
+    proj.import_step("ref", f)
+    key1 = proj.build("ref")["key"]
+    # re-import the same name with different geometry - overwrites the copied .step file in place
+    proj.import_step("ref", _step_file(tmp_path, size=(20, 20, 20)))
+    key2 = proj.build("ref")["key"]
+    assert key1 != key2
+    assert proj.build("ref")["info"]["size"] == [20.0, 20.0, 20.0]
+
+
+def test_checkpoint_includes_imported_step_files(proj, tmp_path):
+    proj.import_step("ref", _step_file(tmp_path))
+    proj.save_checkpoint("v1")
+    proj.delete_part("ref")
+    proj.restore_checkpoint("v1")
+    assert proj.has("ref")
+    assert proj.build("ref")["info"]["ok"]

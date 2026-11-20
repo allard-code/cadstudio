@@ -6,7 +6,7 @@ export const STRINGS = {
   en: {
     "project.new": "＋ Project", "project.new.title": "New project", "project.prompt": "Name of the new project:",
     "add.box": "▭ Box", "add.cylinder": "◯ Cylinder", "add.sphere": "● Sphere", "add.text": "T Text", "add.code": "{ } Code",
-    "import": "⤓ Import", "import.title": "Import STL/3MF/OBJ as a reference", "import.done": "Imported: {name}",
+    "import": "⤓ Import", "import.title": "Import STL/3MF/OBJ as a reference, or STEP as a real editable solid", "import.done": "Imported: {name}",
     "export.mode.title": "Layout", "export.mode.assembly": "1 object (multi-colour)", "export.mode.objects": "separate objects",
     "export.3mf": "Export 3MF", "export.saved": "✓ Saved: {path}",
     "live.title": "Live connection: changes made by Claude appear immediately",
@@ -58,7 +58,7 @@ export const STRINGS = {
   nl: {
     "project.new": "＋ Project", "project.new.title": "Nieuw project", "project.prompt": "Naam van het nieuwe project:",
     "add.box": "▭ Blok", "add.cylinder": "◯ Cilinder", "add.sphere": "● Bol", "add.text": "T Tekst", "add.code": "{ } Code",
-    "import": "⤓ Import", "import.title": "STL/3MF/OBJ importeren als referentie", "import.done": "Geïmporteerd: {name}",
+    "import": "⤓ Import", "import.title": "STL/3MF/OBJ importeren als referentie, of STEP als echte bewerkbare solid", "import.done": "Geïmporteerd: {name}",
     "export.mode.title": "Indeling", "export.mode.assembly": "1 object (multi-color)", "export.mode.objects": "losse objecten",
     "export.3mf": "Exporteer 3MF", "export.saved": "✓ Opgeslagen: {path}",
     "live.title": "Live verbonden: wijzigingen van Claude verschijnen direct",

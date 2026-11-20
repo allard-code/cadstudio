@@ -306,7 +306,7 @@ async def import_file(file: UploadFile, name: str | None = None):
         tmp.write(await file.read())
     pname = P.slugify(name or Path(file.filename or "mesh").stem)
     try:
-        proj.import_mesh(pname, tmp.name, color="#9AA5B1")
+        proj.import_file(pname, tmp.name, color="#9AA5B1")
     finally:
         Path(tmp.name).unlink(missing_ok=True)
     return proj.summary()

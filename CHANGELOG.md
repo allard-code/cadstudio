@@ -43,6 +43,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   straight-line distance between them (e.g. to sanity-check a hole spacing or wall thickness visually);
   markers and the distance stay on screen until you measure again or press Escape. Frontend-only (raycasting
   against the loaded meshes), no new server API.
+- STEP import: `import_mesh()` (same tool, dispatches on the file extension) now gives a `.step`/`.stp` file a
+  real BRep solid instead of a mesh-only reference, so it works with `part()` and the normal `+ - &` operators
+  and can be exported to STEP again — unlike STL/3MF/OBJ/PLY/GLB imports, which stay mesh-only (`mesh_boolean()`).
+  Checkpoints now also snapshot imported STEP files, not just meshes.
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.

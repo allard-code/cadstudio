@@ -151,9 +151,11 @@ The container runs as a non-root user and only writes to `/data`. For remote acc
 ## Limitations
 
 - Not a full replacement for Fusion 360: there are no sketch constraints, timeline or assembly joints. Modelling is code plus parameters, which is exactly what Claude is good at.
-- Imported meshes can be moved, measured and exported, and combined with your own geometry via `mesh_boolean()`
-  (mesh-level union/subtract/intersect) — but not via the regular build123d `+ - &` operators, which need a
-  BRep solid. A `mesh_boolean()` result can't be exported to STEP (no BRep solid), same as a plain imported mesh.
+- Imported meshes (STL/3MF/OBJ/PLY/GLB) can be moved, measured and exported, and combined with your own geometry
+  via `mesh_boolean()` (mesh-level union/subtract/intersect) — but not via the regular build123d `+ - &`
+  operators, which need a BRep solid. A `mesh_boolean()` result can't be exported to STEP (no BRep solid), same
+  as a plain imported mesh. Imported STEP files don't have this limitation: `import_mesh()` (or the editor's
+  Import button) gives a STEP file a real BRep solid, usable in normal `+ - &` booleans and STEP-exportable.
 - The Docker image is built for `linux/amd64`.
 
 ## Contributing

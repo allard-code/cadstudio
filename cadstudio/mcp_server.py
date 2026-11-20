@@ -272,18 +272,21 @@ def list_inbox() -> dict:
     a network share or a file manager). Use the name in import_mesh(file_path=...)."""
     d = links.inbox_dir()
     files = [{"name": f.name, "size_kb": round(f.stat().st_size / 1024, 1)}
-             for f in sorted(d.iterdir()) if f.is_file() and f.suffix.lower() in (".stl", ".3mf", ".obj", ".ply", ".glb")]
+             for f in sorted(d.iterdir()) if f.is_file() and f.suffix.lower() in
+             (".stl", ".3mf", ".obj", ".ply", ".glb", ".step", ".stp")]
     return {"inbox": str(d), "files": files}
 
 
 @mcp.tool()
 def import_mesh(name: str, file_path: str | None = None, url: str | None = None, color: str | None = None,
                 filament: int | None = None, location: list[float] | None = None) -> dict:
-    """Import an STL/3MF/OBJ as a reference part (e.g. a model from MakerWorld to design against).
+    """Import a 3D file as a part.
     file_path: file name in the inbox (see list_inbox) or an absolute path on the server.
     url: direct download URL of the file.
-    The model is centred on X/Y and placed on z=0. Mesh parts are shown, measured and exported,
-    but cannot be used in booleans. Set export to false if it is only a reference."""
+    STEP (.step/.stp) becomes a real BRep part: usable in normal booleans with code-generated geometry
+    (via part("name")) and exportable to STEP again. STL/3MF/OBJ/PLY/GLB become a reference mesh: shown,
+    measured and exported, but can only be combined with other geometry via mesh_boolean(), not + - &.
+    The model is centred on X/Y and placed on z=0. Set export to false if it is only a reference."""
     proj = _proj()
     if url:
         import tempfile
@@ -308,7 +311,7 @@ def import_mesh(name: str, file_path: str | None = None, url: str | None = None,
     else:
         return {"error": "pass file_path or url"}
     try:
-        proj.import_mesh(name, src, color=color, filament=filament)
+        proj.import_file(name, src, color=color, filament=filament)
     finally:
         if url:
             src.unlink(missing_ok=True)
