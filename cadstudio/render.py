@@ -236,6 +236,39 @@ def _axes(draw, elev, azim, x, y, font):
         draw.text((x + dx * 1.25 - 4, y + dy * 1.25 - 7), lab, fill=col, font=font)
 
 
+def thin_wall_mask(V: np.ndarray, F: np.ndarray, threshold_mm: float = 1.2,
+                   max_dist_mm: float = 50.0) -> tuple[np.ndarray, np.ndarray]:
+    """Per-face local wall thickness (mm), by casting a ray from each face into the solid along its inward
+    normal to the first opposite-facing wall. Returns (thickness, thin) where thin flags thickness <
+    threshold_mm (default 1.2 mm, about 3 perimeter lines at a 0.4 mm nozzle). A face with no hit within
+    max_dist_mm (e.g. the outside of a big solid block) gets thickness = inf, never flagged.
+    Only a heuristic (nearest ray hit, not true local thickness) - a sharp near-tangent surface or a
+    non-watertight mesh can give false positives/negatives. Needs the `rtree` package for speed; see
+    mesh_boolean() for the similar watertightness caveat."""
+    import trimesh
+
+    mesh = trimesh.Trimesh(vertices=V, faces=F, process=False)
+    normals = mesh.face_normals
+    centroids = mesh.triangles_center
+    eps = 1e-4 * max(1.0, float(np.ptp(V, axis=0).max()))  # nudge inward, scaled to the model's own size
+    origins = centroids - normals * eps
+    directions = -normals
+    thickness = np.full(len(F), np.inf)
+    try:
+        locs, idx_ray, _ = mesh.ray.intersects_location(origins, directions)
+    except Exception:
+        return thickness, np.zeros(len(F), dtype=bool)
+    if len(idx_ray):
+        d = np.linalg.norm(locs - origins[idx_ray], axis=1)
+        order = np.lexsort((d, idx_ray))  # per ray: nearest hit first
+        ir, ds = idx_ray[order], d[order]
+        first = np.ones(len(ir), dtype=bool)
+        first[1:] = ir[1:] != ir[:-1]
+        thickness[ir[first]] = ds[first]
+    thickness[thickness > max_dist_mm] = np.inf
+    return thickness, thickness < threshold_mm
+
+
 def thumbnail(proj: Project) -> bytes | None:
     try:
         png, _ = render_png(proj, view="iso", size=400)

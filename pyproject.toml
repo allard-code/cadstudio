@@ -29,6 +29,7 @@ dependencies = [
   "networkx>=3",   # trimesh: 3MF import
   "lxml>=5",       # trimesh: 3MF import
   "manifold3d>=3", # trimesh.boolean engine: mesh_boolean() for parts that include an imported mesh
+  "rtree>=1",      # trimesh.ray acceleration structure: check_wall_thickness()
   "numpy",
   "pillow>=10",
 ]

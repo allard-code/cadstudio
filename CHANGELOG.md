@@ -47,6 +47,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   real BRep solid instead of a mesh-only reference, so it works with `part()` and the normal `+ - &` operators
   and can be exported to STEP again — unlike STL/3MF/OBJ/PLY/GLB imports, which stay mesh-only (`mesh_boolean()`).
   Checkpoints now also snapshot imported STEP files, not just meshes.
+- `check_wall_thickness(names, threshold_mm=1.2)`: flags walls thinner than the given threshold by casting a
+  ray from each face to the opposite wall, so a design can be checked for printability before exporting.
+  Returns, per part, the thinnest spot found and its location. New dependency: `rtree` (ray-cast acceleration
+  for `trimesh`).
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.

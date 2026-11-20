@@ -15,6 +15,8 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 try:  # MCP Python SDK 2.x
     from mcp.server.mcpserver import Image
     from mcp.server.mcpserver import MCPServer as _Server
@@ -27,7 +29,7 @@ from . import project as P
 from .export3mf import export_3mf as _export_3mf
 from .export3mf import export_step as _export_step
 from .export3mf import export_stl as _export_stl
-from .render import render_png, thumbnail
+from .render import render_png, thin_wall_mask, thumbnail
 
 CHEATSHEET = (Path(__file__).parent / "cheatsheet.md").read_text(encoding="utf-8")
 WEB_PORT = int(os.environ.get("CADSTUDIO_PORT", "8765"))
@@ -336,6 +338,40 @@ def measure(names: list[str] | None = None) -> dict:
         total = {"bbox_min": lo, "bbox_max": hi, "size": size,
                  "fits_bed": all(size[i] <= P.BED[i] for i in range(3))}
     return {"parts": reps, "total": total}
+
+
+@mcp.tool()
+def check_wall_thickness(names: list[str] | None = None, threshold_mm: float = 1.2) -> dict:
+    """Find walls thinner than threshold_mm (default 1.2 mm = about 3 perimeter lines at a 0.4 mm nozzle) -
+    a wall that thin, or thinner, is likely to print weak or not at all. Works by casting a ray from each
+    face into the solid to the first opposite wall; a heuristic, not exact, and needs a reasonably
+    watertight mesh (same caveat as mesh_boolean()).
+    names: parts to check (default: all parts that build ok).
+    Returns, per part: the thinnest point found (min_thickness_mm), how many faces are below the threshold,
+    and the world-space location of the thinnest point (pass it as the centre of a render_preview, or just
+    look at that area of the model)."""
+    proj = _proj()
+    names = names or [p["name"] for p in proj.parts]
+    reports = []
+    for n in names:
+        e = proj.build(n)
+        if not e["info"].get("ok"):
+            reports.append({"part": n, "ok": False, "error": e["info"].get("error")})
+            continue
+        if not e.get("mesh"):
+            reports.append({"part": n, "ok": False, "error": "part has no mesh to check"})
+            continue
+        V, F = e["mesh"]
+        thickness, thin = thin_wall_mask(V, F, threshold_mm)
+        finite = thickness[np.isfinite(thickness)]
+        if not len(finite):
+            reports.append({"part": n, "ok": True, "min_thickness_mm": None, "thin_faces": 0, "total_faces": len(F)})
+            continue
+        worst = int(np.argmin(thickness))
+        point = V[F[worst]].mean(axis=0).round(2).tolist()
+        reports.append({"part": n, "ok": True, "min_thickness_mm": round(float(finite.min()), 3),
+                        "thin_faces": int(thin.sum()), "total_faces": len(F), "worst_point": point})
+    return {"threshold_mm": threshold_mm, "parts": reports}
 
 
 @mcp.tool()

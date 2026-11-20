@@ -113,8 +113,10 @@ result = mesh_boolean("ref", Cylinder(3, 20), "subtract")   # "union" | "subtrac
 * Needs the meshes to be reasonably watertight; a badly broken import may fail with an error instead of a result.
 
 ## Printability (FDM, 0.4 nozzle)
-* Wall thickness ≥ 1.2 mm (3 lines), preferably 1.6–2.0.
-* Overhang ≤ 45°, otherwise supports, or a chamfer instead of a fillet at the bottom.
+* Wall thickness ≥ 1.2 mm (3 lines), preferably 1.6–2.0. Check with `check_wall_thickness()` - it flags any
+  spot thinner than that (default 1.2 mm) and gives you its location.
+* Overhang ≤ 45°, otherwise supports, or a chamfer instead of a fillet at the bottom. `render_preview(overhangs=True)`
+  highlights those spots.
 * Clearance between separate parts: 0.2–0.3 mm per side.
 * M3 screw holes: Ø3.2 clearance, Ø2.8–2.9 for self-tapping. M3 heat-set insert: Ø4.0–4.2.
 * Flat face at the bottom for bed adhesion.

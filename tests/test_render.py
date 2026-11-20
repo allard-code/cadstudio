@@ -4,7 +4,7 @@ import io
 import numpy as np
 from PIL import Image
 
-from cadstudio.render import render_png
+from cadstudio.render import render_png, thin_wall_mask
 
 from .conftest import BOX
 
@@ -48,3 +48,26 @@ def test_overhangs_ignores_faces_resting_on_bed(proj):
     proj.upsert_part("grounded", code=BOX, color="#2266cc")
     png, _ = render_png(proj, view="bottom", size=300, overhangs=True)
     assert _orange_pixels(png) < 20
+
+
+def test_thin_wall_mask_flags_the_thin_side(proj):
+    import build123d as bd
+
+    from cadstudio.project import tessellate
+
+    outer = bd.Box(30, 30, 10, align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN))
+    inner = bd.Pos(1, 0, 0) * bd.Box(27, 24, 8, align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN))
+    V, F = tessellate(outer - inner)  # one side is left ~0.5mm thick, the others 2-3mm
+    thickness, thin = thin_wall_mask(V, F, threshold_mm=1.2)
+    assert thin.any()
+    assert abs(thickness[thin].min() - 0.5) < 0.01
+
+
+def test_thin_wall_mask_ignores_solid_block(proj):
+    import build123d as bd
+
+    from cadstudio.project import tessellate
+
+    V, F = tessellate(bd.Box(20, 20, 20))  # no opposite wall closer than the far side of the block
+    _, thin = thin_wall_mask(V, F, threshold_mm=1.2)
+    assert not thin.any()
