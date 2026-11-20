@@ -50,6 +50,11 @@ h3{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.8px;co
 #viewport canvas{display:block}
 #viewbar{position:absolute;top:8px;left:8px;display:flex;gap:4px;z-index:2;flex-wrap:wrap}
 #viewbar button{background:#1d2026d9}
+#clipPanel{position:absolute;top:44px;left:8px;display:flex;gap:6px;align-items:center;z-index:2;
+  background:#1d2026d9;border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+#clipPanel select{flex:none}
+#clipPanel input[type=range]{width:160px}
+.hidden{display:none !important}
 #dims{position:absolute;bottom:8px;left:8px;background:#1d2026d9;border:1px solid var(--line);border-radius:6px;padding:6px 9px;font-family:ui-monospace,Consolas,monospace;font-size:12px;z-index:2;white-space:pre}
 #toast{position:absolute;bottom:8px;right:8px;max-width:60%;z-index:3}
 .t{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--accent);padding:8px 10px;border-radius:6px;margin-top:6px;white-space:pre-wrap;word-break:break-all}

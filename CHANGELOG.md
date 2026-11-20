@@ -55,6 +55,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   `print_rate_cm3_per_hour`, default 15), alongside the existing filament weight/cost estimate. Same upper-bound
   caveat: it's volume-based (assumes 100% infill), so it's usually higher than what the slicer itself reports
   once you've actually sliced with your real settings.
+- Editor: a Section view (toolbar button / `C`). Cuts the model with a plane along X/Y/Z (slider + flip
+  button) so you can see the interior - wall thickness, infill cavities, how an inlay fits - without
+  exporting and opening the slicer. Frontend-only (three.js clipping planes), no new server API.
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.

@@ -12,6 +12,7 @@ const S = {
   meshes: new Map(),      // name -> {key, mesh, edges}
   xray: false, edges: true, bed: true, move: false, resize: false, rotate: false, overhangs: false,
   measure: false, measurePoints: [], measureDist: null,
+  clip: false, clipAxis: "z", clipFlip: false,
   dirtyCode: false, dirtyCommon: false,
 };
 const undoStack = []; const redoStack = []; const UNDO_LIMIT = 30;
@@ -34,6 +35,8 @@ const vp = $("#viewport");
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setClearColor(0x1a1d22);
+renderer.localClippingEnabled = true;
+const clipPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
 vp.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
@@ -220,6 +223,7 @@ function syncSceneProps() {
   bedGroup.visible = S.bed;
   attachGizmo();
   updateDims();
+  if (S.clip) updateClipPlane();
 }
 
 function bbox(names) {
@@ -249,6 +253,21 @@ function updateDims() {
   else if (S.measure && S.measurePoints.length === 1) txt += `\n${t("measure.hint2")}`;
   else if (S.measure) txt += `\n${t("measure.hint1")}`;
   $("#dims").textContent = txt || "—";
+}
+
+// ------------------------------------------------------------------ section/clip-plane view
+const CLIP_AXES = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
+function updateClipPlane() {
+  const axis = CLIP_AXES[S.clipAxis];
+  const sign = S.clipFlip ? 1 : -1;
+  clipPlane.normal.copy(axis).multiplyScalar(sign);
+  const all = bbox();
+  if (all.isEmpty()) { clipPlane.constant = 0; return; }
+  const lo = all.min.dot(axis), hi = all.max.dot(axis);
+  const frac = +$("#clipSlider").value / 1000;
+  const cut = lo + (hi - lo) * frac;
+  clipPlane.constant = -sign * cut;
+  renderer.clippingPlanes = S.clip ? [clipPlane] : [];
 }
 
 function setView(v) {
@@ -638,6 +657,14 @@ $("#toggleEdges").onclick = (e) => toggle("edges", e.currentTarget);
 $("#toggleBed").onclick = (e) => toggle("bed", e.currentTarget);
 $("#toggleOverhangs").onclick = (e) => toggle("overhangs", e.currentTarget);
 $("#toggleMeasure").onclick = (e) => { clearMeasure(); toggle("measure", e.currentTarget); updateDims(); };
+$("#toggleClip").onclick = (e) => {
+  S.clip = !S.clip; e.currentTarget.classList.toggle("on", S.clip);
+  $("#clipPanel").classList.toggle("hidden", !S.clip);
+  updateClipPlane();
+};
+$("#clipSlider").oninput = updateClipPlane;
+$("#clipAxis").onchange = (e) => { S.clipAxis = e.target.value; updateClipPlane(); };
+$("#clipFlip").onclick = () => { S.clipFlip = !S.clipFlip; updateClipPlane(); };
 $("#btnUndo").onclick = undo;
 $("#btnRedo").onclick = redo;
 $("#toggleMove").onclick = () => setGizmoMode("move");
@@ -653,6 +680,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "r") $("#toggleRotate").click();
   if (e.key === "o") $("#toggleOverhangs").click();
   if (e.key === "m") $("#toggleMeasure").click();
+  if (e.key === "c") $("#toggleClip").click();
   if (e.key === "f") setView("fit");
   if (e.key === "Escape") { select(null); if (S.measure) clearMeasure(); }
   if (e.key === "Delete" && S.selected) $("#pDel")?.click();

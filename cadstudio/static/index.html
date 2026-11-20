@@ -104,6 +104,12 @@
       <button id="toggleMeasure" data-i18n="view.measure" data-i18n-title="view.measure.title"></button>
       <button id="toggleEdges" data-i18n="view.edges" data-i18n-title="view.edges.title"></button>
       <button id="toggleBed" data-i18n="view.bed" data-i18n-title="view.bed.title"></button>
+      <button id="toggleClip" data-i18n="view.clip" data-i18n-title="view.clip.title"></button>
+    </div>
+    <div id="clipPanel" class="hidden">
+      <select id="clipAxis"><option value="x">X</option><option value="y">Y</option><option value="z" selected>Z</option></select>
+      <input id="clipSlider" type="range" min="0" max="1000" value="500">
+      <button id="clipFlip" class="mini" data-i18n-title="view.clip.flip">⇄</button>
     </div>
     <div id="dims"></div>
     <div id="toast"></div>
