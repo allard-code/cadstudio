@@ -306,8 +306,8 @@ def mesh(name: str):
 
 
 @app.get("/api/preview.png")
-def preview(view: str = "iso"):
-    png, _ = render_png(_proj(), view=view)
+def preview(view: str = "iso", overhangs: bool = False, overhang_angle: float = 45.0):
+    png, _ = render_png(_proj(), view=view, overhangs=overhangs, overhang_angle=overhang_angle)
     return Response(png, media_type="image/png")
 
 

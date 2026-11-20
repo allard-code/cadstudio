@@ -308,11 +308,14 @@ def measure(names: list[str] | None = None) -> dict:
 
 
 @mcp.tool()
-def render_preview(view: str = "grid", parts: list[str] | None = None) -> Image:
+def render_preview(view: str = "grid", parts: list[str] | None = None, overhangs: bool = False,
+                   overhang_angle: float = 45.0) -> Image:
     """Render an image of the model so you can check the result.
     view: grid (iso/front/top/right) | iso | front | back | left | right | top | bottom | iso_back.
-    parts: only show these parts (default: all visible parts)."""
-    png, errors = render_png(_proj(), view=view, parts=parts)
+    parts: only show these parts (default: all visible parts).
+    overhangs: tint faces that need support orange (downward-facing steeper than overhang_angle degrees
+    from vertical; printers can typically self-support up to ~45 deg without support material)."""
+    png, errors = render_png(_proj(), view=view, parts=parts, overhangs=overhangs, overhang_angle=overhang_angle)
     if errors:
         print("render errors: " + "; ".join(errors), file=sys.stderr)
     return Image(data=png, format="png")

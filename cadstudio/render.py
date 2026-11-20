@@ -69,7 +69,7 @@ def _basis(elev: float, azim: float):
 
 
 def _render_view(tris: np.ndarray, colors: np.ndarray, normals: np.ndarray, elev: float, azim: float,
-                 W: int, H: int, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
+                 W: int, H: int, lo: np.ndarray, hi: np.ndarray, overhang: np.ndarray | None = None) -> np.ndarray:
     right, up, cam = _basis(elev, azim)
     # fit scene bbox (all 8 corners) into the image
     corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
@@ -143,6 +143,10 @@ def _render_view(tris: np.ndarray, colors: np.ndarray, normals: np.ndarray, elev
     key /= np.linalg.norm(key)
     lam = 0.38 + 0.42 * np.clip(n @ cam, 0, 1) + 0.28 * np.clip(n @ key, 0, 1)
     img = colors[np.clip(tri_buf, 0, None)] * lam[..., None]
+    if overhang is not None:
+        ov = hit & overhang[np.clip(tri_buf, 0, None)]
+        warn = np.array([255, 110, 15], dtype=np.float32)  # orange: unsupported overhang
+        img = np.where(ov[..., None], img * 0.3 + warn * 0.7, img)
     # outlines: depth jumps (silhouettes) and creases (normal changes)
     edge = np.zeros((H, W), dtype=bool)
     thr = max(span * 0.012, 0.25)
@@ -166,8 +170,12 @@ def _font(size: int):
     return ImageFont.load_default()
 
 
-def render_png(proj: Project, view: str = "grid", parts: list[str] | None = None, size: int = 1000) -> tuple[bytes, list[str]]:
-    """view: one of VIEWS, or 'grid' (iso / front / top / right in 2x2)."""
+def render_png(proj: Project, view: str = "grid", parts: list[str] | None = None, size: int = 1000,
+              overhangs: bool = False, overhang_angle: float = 45.0) -> tuple[bytes, list[str]]:
+    """view: one of VIEWS, or 'grid' (iso / front / top / right in 2x2).
+    overhangs: tint faces that need support orange - downward-facing faces steeper than overhang_angle
+    (degrees, measured from a vertical wall; 0 = never needs support, 90 = flags any downward-facing slope),
+    excluding faces resting on the bed itself."""
     items, errors = _collect(proj, parts)
     if not items:
         raise ValueError("Nothing to render" + (": " + "; ".join(errors) if errors else ""))
@@ -181,6 +189,14 @@ def render_png(proj: Project, view: str = "grid", parts: list[str] | None = None
     lo, hi = allv.min(0), allv.max(0)
     sz = hi - lo
 
+    overhang = None
+    if overhangs:
+        # downward-facing steeper than the threshold: |n.z| > cos(angle from vertical), n.z < 0
+        thresh = math.cos(math.radians(max(0.0, min(90.0, overhang_angle))))
+        tri_min_z = tris[:, :, 2].min(axis=1)
+        on_bed = tri_min_z <= 0.05  # resting on the build plate (world z=0), not actually unsupported
+        overhang = (nrm[:, 2] < -thresh) & ~on_bed
+
     names = ["iso", "front", "top", "right"] if view == "grid" else [view if view in VIEWS else "iso"]
     cell = size // 2 if len(names) > 1 else size
     canvas = Image.new("RGB", (cell * (2 if len(names) > 1 else 1), cell * (2 if len(names) > 1 else 1) + 34),
@@ -189,13 +205,15 @@ def render_png(proj: Project, view: str = "grid", parts: list[str] | None = None
     f_small, f_big = _font(14), _font(17)
     for i, nm in enumerate(names):
         e, a = VIEWS[nm]
-        arr = _render_view(tris, cols, nrm, e, a, cell, cell, lo, hi)
+        arr = _render_view(tris, cols, nrm, e, a, cell, cell, lo, hi, overhang=overhang)
         x0, y0 = (i % 2) * cell, 34 + (i // 2) * cell
         canvas.paste(Image.fromarray(arr), (x0, y0))
         draw.rectangle([x0, y0, x0 + cell - 1, y0 + cell - 1], outline=(210, 214, 220))
         draw.text((x0 + 8, y0 + 6), nm, fill=(90, 96, 106), font=f_small)
         _axes(draw, e, a, x0 + 30, y0 + cell - 30, f_small)
     title = f"{proj.name}   {sz[0]:.1f} × {sz[1]:.1f} × {sz[2]:.1f} mm   ({len(items)} part{'s' if len(items) != 1 else ''})"
+    if overhangs:
+        title += f"   [orange = overhang >{overhang_angle:.0f}°, needs support]"
     draw.text((10, 8), title, fill=(30, 33, 38), font=f_big)
     if errors:
         draw.text((10, canvas.height - 22), "ERROR: " + "; ".join(errors)[:150], fill=(200, 30, 40), font=f_small)

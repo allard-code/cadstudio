@@ -30,6 +30,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - `array_part`: duplicate a part in a grid on the bed (e.g. print N copies of a small part on one plate), with
   sensible default spacing (part size + margin) or explicit `spacing_x`/`spacing_y`. Reports whether the whole
   array still fits the bed. Available to Claude and as `POST /api/parts/{name}/array`.
+- Overhang highlighting: downward-facing surfaces steeper than 45° from vertical (that aren't resting on the
+  bed) are tinted orange, so you can spot where support material will be needed before slicing. A toolbar
+  toggle (`O`) in the live 3D editor, and an `overhangs`/`overhang_angle` option on `render_preview` and
+  `/api/preview.png` for Claude's own renders.
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.

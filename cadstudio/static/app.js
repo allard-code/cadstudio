@@ -10,7 +10,7 @@ const S = {
   project: null,          // summary from server
   selected: null,         // part name
   meshes: new Map(),      // name -> {key, mesh, edges}
-  xray: false, edges: true, bed: true, move: false, resize: false, rotate: false,
+  xray: false, edges: true, bed: true, move: false, resize: false, rotate: false, overhangs: false,
   dirtyCode: false, dirtyCommon: false,
 };
 const undoStack = []; const redoStack = []; const UNDO_LIMIT = 30;
@@ -107,6 +107,45 @@ function material(color) {
   });
 }
 
+// Overhang highlighting: faces steeper than 45deg from vertical, facing down, not resting on the bed -
+// these need support material when printing. Mirrors the threshold used by render_preview on the server.
+const OVERHANG_COS = Math.cos(Math.PI / 4);
+const OVERHANG_COLOR = new THREE.Color(0xff6e0f);
+
+function computeOverhangMask(shadedGeo, centreZ) {
+  const sp = shadedGeo.attributes.position.array;
+  const ntri = sp.length / 9;
+  const mask = new Uint8Array(ntri);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const ab = new THREE.Vector3(), ac = new THREE.Vector3(), nrm = new THREE.Vector3();
+  for (let i = 0; i < ntri; i++) {
+    const o = i * 9;
+    a.set(sp[o], sp[o + 1], sp[o + 2]); b.set(sp[o + 3], sp[o + 4], sp[o + 5]); c.set(sp[o + 6], sp[o + 7], sp[o + 8]);
+    ab.subVectors(b, a); ac.subVectors(c, a);
+    nrm.crossVectors(ab, ac).normalize();
+    const minWorldZ = Math.min(a.z, b.z, c.z) + centreZ;
+    mask[i] = (nrm.z < -OVERHANG_COS && minWorldZ > 0.05) ? 1 : 0;
+  }
+  return mask;
+}
+
+function applyOverhangColors(entry, colorHex) {
+  const geo = entry.mesh.geometry;
+  const ntri = entry.overhangMask.length;
+  let attr = geo.getAttribute("color");
+  if (!attr || attr.count !== ntri * 3) { attr = new THREE.BufferAttribute(new Float32Array(ntri * 9), 3); geo.setAttribute("color", attr); }
+  const base = new THREE.Color(colorHex);
+  for (let i = 0; i < ntri; i++) {
+    const col = S.overhangs && entry.overhangMask[i] ? OVERHANG_COLOR : base;
+    const o = i * 9;
+    for (let v = 0; v < 3; v++) { attr.array[o + v * 3] = col.r; attr.array[o + v * 3 + 1] = col.g; attr.array[o + v * 3 + 2] = col.b; }
+  }
+  attr.needsUpdate = true;
+  entry.mesh.material.vertexColors = S.overhangs;
+  entry.mesh.material.color.set(S.overhangs ? 0xffffff : colorHex);
+  entry.mesh.material.needsUpdate = true;
+}
+
 async function loadMesh(part) {
   const info = part.info || {};
   const cur = S.meshes.get(part.name);
@@ -133,7 +172,10 @@ async function loadMesh(part) {
   mesh.add(edges);
   if (cur) { if (tc.object === cur.mesh) tc.detach(); partsGroup.remove(cur.mesh); cur.mesh.geometry.dispose(); }
   partsGroup.add(mesh);
-  S.meshes.set(part.name, { key: info.key, mesh, edges });
+  const overhangMask = computeOverhangMask(shaded, centre.z);
+  const entry = { key: info.key, mesh, edges, overhangMask };
+  S.meshes.set(part.name, entry);
+  applyOverhangColors(entry, part.color);
 }
 
 function syncSceneProps() {
@@ -143,6 +185,7 @@ function syncSceneProps() {
     const m = S.meshes.get(p.name); if (!m) continue;
     m.mesh.visible = p.visible && p.info.ok;
     m.mesh.material.dispose(); m.mesh.material = material(p.color);
+    applyOverhangColors(m, p.color);
     m.edges.visible = S.edges;
     if (p.name === S.selected) m.mesh.material.emissive = new THREE.Color(0x3a1d05);
   }
@@ -537,6 +580,7 @@ const setGizmoMode = (key) => {
 $("#toggleXray").onclick = (e) => toggle("xray", e.currentTarget);
 $("#toggleEdges").onclick = (e) => toggle("edges", e.currentTarget);
 $("#toggleBed").onclick = (e) => toggle("bed", e.currentTarget);
+$("#toggleOverhangs").onclick = (e) => toggle("overhangs", e.currentTarget);
 $("#btnUndo").onclick = undo;
 $("#btnRedo").onclick = redo;
 $("#toggleMove").onclick = () => setGizmoMode("move");
@@ -550,6 +594,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "g") $("#toggleMove").click();
   if (e.key === "s") $("#toggleResize").click();
   if (e.key === "r") $("#toggleRotate").click();
+  if (e.key === "o") $("#toggleOverhangs").click();
   if (e.key === "f") setView("fit");
   if (e.key === "Escape") select(null);
   if (e.key === "Delete" && S.selected) $("#pDel")?.click();
