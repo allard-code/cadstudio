@@ -87,7 +87,8 @@ def _slot_warnings(items) -> list[str]:
 
 def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assembly", flavor: str = "orca",
                only: list[str] | None = None, object_name: str | None = None, thumbnail: bytes | None = None,
-               filament_density_g_cm3: float = 1.24, filament_price_eur_kg: float | None = None) -> dict:
+               filament_density_g_cm3: float = 1.24, filament_price_eur_kg: float | None = None,
+               print_rate_cm3_per_hour: float | None = 15.0) -> dict:
     items = exportable_meshes(proj, only)
     items, warnings = _place(items, center=True)
     path = Path(path) if path else proj.dir / "exports" / f"{proj.name}.3mf"
@@ -197,6 +198,12 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
               "total_g_solid_estimate": round(total_g, 1)}
     if filament_price_eur_kg is not None:
         result["cost_eur_solid_estimate"] = round(total_g / 1000 * filament_price_eur_kg, 2)
+    if print_rate_cm3_per_hour:
+        # same upper-bound logic as the weight estimate: volume-based, so it assumes 100% infill and no
+        # travel/retraction overhead - treat it as a ceiling, not a prediction (the slicer's own estimate,
+        # after it has sliced with your real settings, will be more accurate and is usually lower)
+        total_cm3 = total_g / filament_density_g_cm3
+        result["print_time_hours_estimate"] = round(total_cm3 / print_rate_cm3_per_hour, 2)
     return result
 
 

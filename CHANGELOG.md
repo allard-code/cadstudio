@@ -51,6 +51,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   ray from each face to the opposite wall, so a design can be checked for printability before exporting.
   Returns, per part, the thinnest spot found and its location. New dependency: `rtree` (ray-cast acceleration
   for `trimesh`).
+- `export_3mf` now also returns a rough print-time estimate (`print_time_hours_estimate`, from a configurable
+  `print_rate_cm3_per_hour`, default 15), alongside the existing filament weight/cost estimate. Same upper-bound
+  caveat: it's volume-based (assumes 100% infill), so it's usually higher than what the slicer itself reports
+  once you've actually sliced with your real settings.
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.

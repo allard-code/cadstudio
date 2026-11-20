@@ -393,7 +393,7 @@ def render_preview(view: str = "grid", parts: list[str] | None = None, overhangs
 @mcp.tool()
 def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str = "orca",
                parts: list[str] | None = None, filament_density_g_cm3: float = 1.24,
-               filament_price_eur_kg: float | None = None) -> dict:
+               filament_price_eur_kg: float | None = None, print_rate_cm3_per_hour: float | None = 15.0) -> dict:
     """Export to 3MF.
     mode: "assembly" = all parts as one object with one extruder/filament slot per part (multi-colour print);
           "objects"  = every part a separate object.
@@ -401,12 +401,16 @@ def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str 
     filename: optional server path; default <project>/exports/<project>.3mf.
     filament_density_g_cm3: default is PLA (1.24); use ~1.27 for PETG, ~1.04 for ABS, ~1.00-1.08 for TPU.
     filament_price_eur_kg: if given, adds a rough cost estimate.
-    The response contains the path, a download_url, which parts are on which filament slot, and a *rough*
-    filament-weight/cost estimate per slot (solid-model volume x density - ignores infill/perimeters, so it's
-    an upper bound for anything below 100% infill, which is most prints)."""
+    print_rate_cm3_per_hour: used for a rough print-time estimate (default 15, typical for a 0.4mm nozzle at
+    ~0.2mm layers); pass None to skip it, or your own figure if you know the printer runs faster/slower.
+    The response contains the path, a download_url, which parts are on which filament slot, and *rough*
+    filament-weight/cost/time estimates (solid-model volume x density - ignores infill/perimeters, so these
+    are upper bounds for anything below 100% infill, which is most prints; the slicer's own estimate, once
+    you've actually sliced with your real settings, will be more accurate and is usually lower)."""
     proj = _proj()
     res = _export_3mf(proj, filename, mode=mode, flavor=flavor, only=parts, thumbnail=thumbnail(proj),
-                       filament_density_g_cm3=filament_density_g_cm3, filament_price_eur_kg=filament_price_eur_kg)
+                       filament_density_g_cm3=filament_density_g_cm3, filament_price_eur_kg=filament_price_eur_kg,
+                       print_rate_cm3_per_hour=print_rate_cm3_per_hour)
     res["download_url"] = links.download_url(res["path"])
     return res
 

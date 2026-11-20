@@ -48,6 +48,14 @@ def test_filament_weight_without_price_omits_cost(proj):
     assert res["total_g_solid_estimate"] > 0
 
 
+def test_print_time_estimate_scales_with_rate(proj):
+    proj.upsert_part("a", code="result = Box(10, 10, 10, align=(Align.CENTER, Align.CENTER, Align.MIN))")
+    res = export_3mf(proj, print_rate_cm3_per_hour=10.0)  # 1 cm^3 at 10 cm^3/h -> 0.1 h
+    assert abs(res["print_time_hours_estimate"] - 0.1) < 1e-6
+    res2 = export_3mf(proj, print_rate_cm3_per_hour=None)
+    assert "print_time_hours_estimate" not in res2
+
+
 def test_prusa_3mf_volumes(proj):
     _two_colour(proj)
     res = export_3mf(proj, flavor="prusa")
