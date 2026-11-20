@@ -650,6 +650,19 @@ class Project:
         if not f.exists():
             raise PartError(f"Mesh file missing: {f}")
         m = trimesh.load(f, force="mesh")
+        if not m.is_watertight:
+            # a small hole or a sliver of bad faces is common in downloaded models; try to patch it up so
+            # mesh_boolean() (which needs a watertight mesh) and the volume/weight estimate stay usable -
+            # if this doesn't fully succeed, is_watertight below still reports the real, final state.
+            # fill_holes() triangulates the hole's boundary loop; for an ordinary hole (missing faces on
+            # one roughly flat patch) that loop is planar and the triangulation is unambiguous, but a
+            # hole that spans a sharp edge (non-planar boundary) has two different diagonals to choose
+            # from and fill_holes() picks one without checking which matches the original surface - the
+            # result is still watertight but can have the wrong volume. Not detectable here in general.
+            with contextlib.suppress(Exception):
+                trimesh.repair.fill_holes(m)
+                m.merge_vertices()
+                trimesh.repair.fix_normals(m)
         V = np.asarray(m.vertices, dtype=np.float64)
         F = np.asarray(m.faces, dtype=np.int64)
         if spec.get("recenter", True):  # models from MakerWorld etc. sit somewhere on *their* bed: centre on origin, z=0

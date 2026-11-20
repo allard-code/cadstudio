@@ -250,6 +250,29 @@ def test_mesh_import_scale_is_applied(proj, tmp_path):
     assert abs(info["volume_mm3"] - 2000) < 1e-6
 
 
+def _box_with_hole(size=(10, 10, 10)):
+    # delete both triangles of one quad face (matched by face normal, not by index - two
+    # triangles that are merely adjacent in the face array can belong to different faces of
+    # the box and share an edge, which makes the resulting hole non-planar and gives
+    # fill_holes() two differently-shaped ways to patch it; matching by normal guarantees a
+    # single flat quad hole with one unambiguous triangulation)
+    box = trimesh.creation.box(size)
+    normals = box.face_normals
+    i, j = np.where((normals == normals[0]).all(axis=1))[0]
+    faces = np.delete(box.faces.copy(), [i, j], axis=0)
+    return trimesh.Trimesh(vertices=box.vertices, faces=faces, process=False)
+
+
+def test_mesh_import_repairs_a_hole(proj, tmp_path):
+    f = tmp_path / "holey.stl"
+    _box_with_hole((10, 10, 10)).export(f)
+    proj.import_mesh("ref", f)
+    info = proj.build("ref")["info"]
+    assert info["ok"], info
+    assert info["watertight"] is True
+    assert abs(info["volume_mm3"] - 1000) < 1e-6
+
+
 def test_project_is_persisted_and_reloaded(proj):
     proj.upsert_part("a", code=BOX, color="#123456")
     P._open.clear()

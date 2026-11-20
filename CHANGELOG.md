@@ -62,6 +62,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   shapes), alongside the existing grid `array_part`. Default radius/centre fan copies out around the part's
   own current position; pass an explicit `center` to array around a different point. `rotate_copies` turns
   each copy to face outward with the pattern. Available to Claude and as `POST /api/parts/{name}/array_polar`.
+- Mesh import now tries to repair a non-watertight mesh (a small hole or a sliver of bad faces, common in
+  downloaded models) before it's used: `fill_holes` + merge + `fix_normals`. Lets `mesh_boolean()` (which
+  needs a watertight mesh) and the volume/weight estimate work on models that were previously rejected or
+  silently wrong. Best-effort - if repair doesn't fully succeed, `watertight` in the build info still reports
+  the real, final state, and a hole that spans a sharp edge of the model can in rare cases be patched with
+  the wrong (though still watertight) geometry, since its boundary isn't flat and has more than one valid
+  triangulation.
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.
