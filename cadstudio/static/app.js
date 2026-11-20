@@ -11,6 +11,7 @@ const S = {
   selected: null,         // part name
   meshes: new Map(),      // name -> {key, mesh, edges}
   xray: false, edges: true, bed: true, move: false, resize: false, rotate: false, overhangs: false,
+  measure: false, measurePoints: [], measureDist: null,
   dirtyCode: false, dirtyCommon: false,
 };
 const undoStack = []; const redoStack = []; const UNDO_LIMIT = 30;
@@ -60,6 +61,7 @@ function buildBed(w = 250, d = 250) {
 buildBed();
 
 const partsGroup = new THREE.Group(); scene.add(partsGroup);
+const measureGroup = new THREE.Group(); scene.add(measureGroup);
 const tc = new TransformControls(camera, renderer.domElement);
 tc.setSize(0.8);
 scene.add(tc.getHelper ? tc.getHelper() : tc);
@@ -96,8 +98,34 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ptr, camera);
   const hits = ray.intersectObjects([...S.meshes.values()].map((m) => m.mesh).filter((m) => m.visible));
+  if (S.measure) { if (hits.length) addMeasurePoint(hits[0].point); return; }
   select(hits.length ? hits[0].object.userData.name : null);
 });
+
+// ------------------------------------------------------------------ measure tool: click two points on a
+// part's surface, see the straight-line distance between them (e.g. to check a hole spacing visually)
+function clearMeasure() {
+  measureGroup.clear();
+  S.measurePoints = []; S.measureDist = null;
+  updateDims();
+}
+function addMeasurePoint(point) {
+  if (S.measurePoints.length >= 2) clearMeasure();
+  const marker = new THREE.Mesh(new THREE.SphereGeometry(1.4, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffd60a, depthTest: false }));
+  marker.position.copy(point); marker.renderOrder = 999;
+  measureGroup.add(marker);
+  S.measurePoints.push(point.clone());
+  if (S.measurePoints.length === 2) {
+    const [a, b] = S.measurePoints;
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]),
+      new THREE.LineBasicMaterial({ color: 0xffd60a, depthTest: false }));
+    line.renderOrder = 999;
+    measureGroup.add(line);
+    S.measureDist = a.distanceTo(b);
+  }
+  updateDims();
+}
 
 function material(color) {
   return new THREE.MeshStandardMaterial({
@@ -217,6 +245,9 @@ function updateDims() {
     const [x, y, z] = p.info.size;
     txt += `\n${p.name}  ${x.toFixed(1)} × ${y.toFixed(1)} × ${z.toFixed(1)} mm` + (p.info.volume_mm3 ? `  ·  ${(p.info.volume_mm3 / 1000).toFixed(2)} cm³` : "");
   }
+  if (S.measureDist != null) txt += `\n${t("measure.distance")}  ${S.measureDist.toFixed(2)} mm`;
+  else if (S.measure && S.measurePoints.length === 1) txt += `\n${t("measure.hint2")}`;
+  else if (S.measure) txt += `\n${t("measure.hint1")}`;
   $("#dims").textContent = txt || "—";
 }
 
@@ -606,6 +637,7 @@ $("#toggleXray").onclick = (e) => toggle("xray", e.currentTarget);
 $("#toggleEdges").onclick = (e) => toggle("edges", e.currentTarget);
 $("#toggleBed").onclick = (e) => toggle("bed", e.currentTarget);
 $("#toggleOverhangs").onclick = (e) => toggle("overhangs", e.currentTarget);
+$("#toggleMeasure").onclick = (e) => { clearMeasure(); toggle("measure", e.currentTarget); updateDims(); };
 $("#btnUndo").onclick = undo;
 $("#btnRedo").onclick = redo;
 $("#toggleMove").onclick = () => setGizmoMode("move");
@@ -620,8 +652,9 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "s") $("#toggleResize").click();
   if (e.key === "r") $("#toggleRotate").click();
   if (e.key === "o") $("#toggleOverhangs").click();
+  if (e.key === "m") $("#toggleMeasure").click();
   if (e.key === "f") setView("fit");
-  if (e.key === "Escape") select(null);
+  if (e.key === "Escape") { select(null); if (S.measure) clearMeasure(); }
   if (e.key === "Delete" && S.selected) $("#pDel")?.click();
   if ((e.key === "z" || e.key === "Z") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   if (e.key === "d" && (e.ctrlKey || e.metaKey) && S.selected) { e.preventDefault(); $("#pDup")?.click(); }

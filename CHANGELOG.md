@@ -39,6 +39,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   presets, which only save `set_params` values. A "Checkpoints" dropdown + save/restore/delete buttons in the
   editor; `save_checkpoint`/`list_checkpoints`/`restore_checkpoint`/`delete_checkpoint` for Claude, and
   `POST /api/checkpoints` / `POST /api/checkpoints/{name}/restore` / `DELETE /api/checkpoints/{name}`.
+- Editor: an interactive Measure tool (toolbar button / `M`). Click two points on a part's surface to see the
+  straight-line distance between them (e.g. to sanity-check a hole spacing or wall thickness visually);
+  markers and the distance stay on screen until you measure again or press Escape. Frontend-only (raycasting
+  against the loaded meshes), no new server API.
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.
