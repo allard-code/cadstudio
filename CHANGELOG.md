@@ -5,7 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+- The editor could show a stale project until a hard refresh (Ctrl+F5): API responses and the editor page are now
+  sent with `Cache-Control: no-store`, and the editor's own JS/CSS with `no-cache` (revalidated on every load).
+- Resizing a part in the editor (scale) was silently dropped by the REST API.
+
 ### Added
+- Build plates (beds). Every part has a `plate` number; a project can have several plates, laid out side by side
+  in the same grid as Orca/Bambu/Anycubic Slicer Next. Editor: a bed bar under the viewport ("All beds", "Bed 1",
+  "Bed 2", …, ＋ / ✕) to switch the view to one bed (also keys `1`–`9`, `0` = all), a bed selector in the
+  inspector, an overfull-bed warning, and "Arrange", which spreads all printable parts over as many beds as
+  needed (adding beds automatically; multi-colour assemblies and parts linked with `part()` stay together).
+  Claude: `plate` in `set_part`/`update_part`, new `add_plate`, `remove_plate`, `arrange_plates`, and `plate` in
+  `render_preview`; `measure` reports per plate.
+- Multi-plate 3MF: the Orca flavour writes every plate into one file (objects placed in the slicer's plate grid,
+  plus `<plate>` blocks in `Metadata/model_settings.config`). `export_3mf(plate=N)` exports a single plate and
+  `split_plates=True` writes one 3MF per plate (also in the editor's export menu).
 - Parts can be stretched per axis: a new `scale` field (`[sx, sy, sz]`, about the part's own centre). Usable from the
   editor (new "Resize" toolbar button / `S` shortcut with drag handles, plus exact numeric fields in the inspector)
   and from Claude via `set_part`/`update_part`. Applied before export, so 3MF/STL/STEP all reflect it.

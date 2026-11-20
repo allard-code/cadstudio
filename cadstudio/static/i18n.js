@@ -4,6 +4,15 @@
 
 export const STRINGS = {
   en: {
+    "plates.all": "All beds", "plates.plate": "Bed {i}", "plates.add": "Add a build plate (bed)",
+    "plates.remove": "Remove the selected bed (its parts move to the previous bed)",
+    "plates.remove.confirm": "Remove bed {i}? Its parts move to bed {to}.",
+    "plates.arrange": "⊞ Arrange", "plates.arrange.title": "Spread all printable parts over as many beds as needed (adds beds automatically)",
+    "plates.arrange.done": "Arranged over {n} bed(s)", "plates.tab.title": "Show only bed {i} (key {i}; 0 = all beds)",
+    "plates.over": "⚠ bed {i} is overfull - use Arrange or move a part to another bed",
+    "insp.plate": "Build plate (bed)",
+    "export.plates.title": "Several beds: how to export them", "export.plates.all": "all beds in 1 file",
+    "export.plates.split": "1 file per bed", "export.plates.current": "only the shown bed",
     "project.new": "＋ Project", "project.new.title": "New project", "project.prompt": "Name of the new project:",
     "add.box": "▭ Box", "add.cylinder": "◯ Cylinder", "add.sphere": "● Sphere", "add.text": "T Text", "add.code": "{ } Code",
     "import": "⤓ Import", "import.title": "Import STL/3MF/OBJ as a reference, or STEP as a real editable solid", "import.done": "Imported: {name}",
@@ -58,6 +67,15 @@ export const STRINGS = {
     "lang.title": "Language",
   },
   nl: {
+    "plates.all": "Alle bedden", "plates.plate": "Bed {i}", "plates.add": "Bed (printplaat) toevoegen",
+    "plates.remove": "Geselecteerd bed verwijderen (onderdelen gaan naar het vorige bed)",
+    "plates.remove.confirm": "Bed {i} verwijderen? De onderdelen gaan naar bed {to}.",
+    "plates.arrange": "⊞ Verdeel", "plates.arrange.title": "Verdeel alle printbare onderdelen over zoveel bedden als nodig (voegt zelf bedden toe)",
+    "plates.arrange.done": "Verdeeld over {n} bed(den)", "plates.tab.title": "Toon alleen bed {i} (toets {i}; 0 = alle bedden)",
+    "plates.over": "⚠ bed {i} is te vol - gebruik Verdeel of zet een onderdeel op een ander bed",
+    "insp.plate": "Printplaat (bed)",
+    "export.plates.title": "Meerdere bedden: hoe exporteren", "export.plates.all": "alle bedden in 1 bestand",
+    "export.plates.split": "1 bestand per bed", "export.plates.current": "alleen getoond bed",
     "project.new": "＋ Project", "project.new.title": "Nieuw project", "project.prompt": "Naam van het nieuwe project:",
     "add.box": "▭ Blok", "add.cylinder": "◯ Cilinder", "add.sphere": "● Bol", "add.text": "T Tekst", "add.code": "{ } Code",
     "import": "⤓ Import", "import.title": "STL/3MF/OBJ importeren als referentie, of STEP als echte bewerkbare solid", "import.done": "Geïmporteerd: {name}",

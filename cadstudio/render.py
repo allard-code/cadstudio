@@ -12,7 +12,7 @@ import math
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from .project import PART_DEFAULTS, Project
+from .project import PART_DEFAULTS, Project, plate_origin
 
 VIEWS = {  # (elevation, azimuth) in degrees; azimuth 0 = looking from +X, -90 = from -Y (front)
     "iso": (30, -55),
@@ -36,11 +36,16 @@ def _hex(c: str) -> np.ndarray:
         return np.array([200, 200, 200], dtype=np.float32)
 
 
-def _collect(proj: Project, parts: list[str] | None):
+def _collect(proj: Project, parts: list[str] | None, plate: int | None = None):
+    """Parts to draw. With several plates and no plate filter, each part is shifted to its plate's spot in
+    the plate grid (as in the editor and the slicer), so parts on different plates don't overlap."""
     items, errors = [], []
+    count = proj.plate_count
     for p in proj.parts:
         s = {**PART_DEFAULTS, **p}
         if parts and s["name"] not in parts:
+            continue
+        if plate is not None and int(s["plate"]) != int(plate):
             continue
         if not parts and not s["visible"]:
             continue
@@ -48,7 +53,11 @@ def _collect(proj: Project, parts: list[str] | None):
         if not e["info"].get("ok"):
             errors.append(f"{s['name']}: {e['info'].get('error')}")
             continue
-        items.append((s, *e["mesh"]))
+        V, F = e["mesh"]
+        if plate is None and count > 1:
+            ox, oy = plate_origin(int(s["plate"]), count)
+            V = V + np.array([ox, oy, 0.0])
+        items.append((s, V, F))
     return items, errors
 
 
@@ -171,12 +180,14 @@ def _font(size: int):
 
 
 def render_png(proj: Project, view: str = "grid", parts: list[str] | None = None, size: int = 1000,
-              overhangs: bool = False, overhang_angle: float = 45.0) -> tuple[bytes, list[str]]:
+              overhangs: bool = False, overhang_angle: float = 45.0,
+              plate: int | None = None) -> tuple[bytes, list[str]]:
     """view: one of VIEWS, or 'grid' (iso / front / top / right in 2x2).
     overhangs: tint faces that need support orange - downward-facing faces steeper than overhang_angle
     (degrees, measured from a vertical wall; 0 = never needs support, 90 = flags any downward-facing slope),
-    excluding faces resting on the bed itself."""
-    items, errors = _collect(proj, parts)
+    excluding faces resting on the bed itself.
+    plate: only parts on that build plate (default: all plates, laid out side by side)."""
+    items, errors = _collect(proj, parts, plate)
     if not items:
         raise ValueError("Nothing to render" + (": " + "; ".join(errors) if errors else ""))
     tris = np.vstack([V[F] for _, V, F in items]).astype(np.float64)
@@ -211,7 +222,10 @@ def render_png(proj: Project, view: str = "grid", parts: list[str] | None = None
         draw.rectangle([x0, y0, x0 + cell - 1, y0 + cell - 1], outline=(210, 214, 220))
         draw.text((x0 + 8, y0 + 6), nm, fill=(90, 96, 106), font=f_small)
         _axes(draw, e, a, x0 + 30, y0 + cell - 30, f_small)
-    title = f"{proj.name}   {sz[0]:.1f} × {sz[1]:.1f} × {sz[2]:.1f} mm   ({len(items)} part{'s' if len(items) != 1 else ''})"
+    where = f"  plate {plate}/{proj.plate_count}" if plate is not None else (
+        f"  {proj.plate_count} plates" if proj.plate_count > 1 else "")
+    n_parts = f"{len(items)} part{'s' if len(items) != 1 else ''}"
+    title = f"{proj.name}{where}   {sz[0]:.1f} × {sz[1]:.1f} × {sz[2]:.1f} mm   ({n_parts})"
     if overhangs:
         title += f"   [orange = overhang >{overhang_angle:.0f}°, needs support]"
     draw.text((10, 8), title, fill=(30, 33, 38), font=f_big)

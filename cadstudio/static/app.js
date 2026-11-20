@@ -13,6 +13,7 @@ const S = {
   xray: false, edges: true, bed: true, move: false, resize: false, rotate: false, overhangs: false,
   measure: false, measurePoints: [], measureDist: null,
   clip: false, clipAxis: "z", clipFlip: false,
+  plate: 0,               // build plate shown in the viewport; 0 = all plates side by side
   dirtyCode: false, dirtyCommon: false,
 };
 const undoStack = []; const redoStack = []; const UNDO_LIMIT = 30;
@@ -50,18 +51,47 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x404050, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-150, -250, 300); scene.add(sun);
 const fill = new THREE.DirectionalLight(0xffffff, 0.5); fill.position.set(200, 150, 80); scene.add(fill);
 
-// build plate 250 x 250 centred on origin
+// build plates (beds), 250 x 250 each; plate 1 centred on the origin, further plates in the same grid as
+// Orca/Bambu/Anycubic Slicer Next (columns to +X, rows to -Y, 1/5 bed gap) - positions come from the server
 const bedGroup = new THREE.Group(); scene.add(bedGroup);
-function buildBed(w = 250, d = 250) {
-  bedGroup.clear();
-  const plate = new THREE.Mesh(new THREE.PlaneGeometry(w, d),
-    new THREE.MeshStandardMaterial({ color: 0x23272e, roughness: 1, transparent: true, opacity: 0.9 }));
-  plate.position.z = -0.05; bedGroup.add(plate);
-  const g10 = new THREE.GridHelper(w, w / 10, 0x3a404a, 0x2c3139); g10.rotation.x = Math.PI / 2; bedGroup.add(g10);
-  const g50 = new THREE.GridHelper(w, w / 50, 0x56606e, 0x56606e); g50.rotation.x = Math.PI / 2; g50.position.z = 0.01; bedGroup.add(g50);
-  const axes = new THREE.AxesHelper(30); axes.position.set(-w / 2, -d / 2, 0.02); bedGroup.add(axes);
+const plateCount = () => (S.project && S.project.plates) || 1;
+const partPlate = (p) => p.plate || 1;
+const onShownPlate = (p) => !S.plate || partPlate(p) === S.plate;
+function plateOrigin(n) {
+  const o = S.project && S.project.plate_origins && S.project.plate_origins[String(n)];
+  return o ? new THREE.Vector3(o[0], o[1], 0) : new THREE.Vector3();
 }
-buildBed();
+function plateLabel(text, active) {
+  const c = document.createElement("canvas"); c.width = 256; c.height = 64;
+  const g = c.getContext("2d");
+  g.font = "bold 40px system-ui, sans-serif"; g.textBaseline = "middle";
+  g.fillStyle = active ? "#ff8a3d" : "#8b93a1"; g.fillText(text, 4, 34);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+  sp.scale.set(64, 16, 1);
+  return sp;
+}
+let bedKey = "";
+function buildBeds(w = 250, d = 250) {
+  const n = plateCount();
+  const key = `${n}|${S.plate}|${JSON.stringify(S.project && S.project.plate_origins)}|${LANG}`;
+  if (key === bedKey) return;
+  bedKey = key;
+  bedGroup.clear();
+  for (let i = 1; i <= n; i++) {
+    const active = n > 1 && S.plate === i;
+    const g = new THREE.Group(); g.position.copy(plateOrigin(i)); g.userData.plate = i;
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(w, d),
+      new THREE.MeshStandardMaterial({ color: active ? 0x2b3038 : 0x23272e, roughness: 1, transparent: true, opacity: 0.9 }));
+    plate.position.z = -0.05; g.add(plate);
+    const g10 = new THREE.GridHelper(w, w / 10, 0x3a404a, 0x2c3139); g10.rotation.x = Math.PI / 2; g.add(g10);
+    const g50 = new THREE.GridHelper(w, w / 50, active ? 0xff8a3d : 0x56606e, active ? 0xff8a3d : 0x56606e);
+    g50.rotation.x = Math.PI / 2; g50.position.z = 0.01; g.add(g50);
+    if (i === 1) { const axes = new THREE.AxesHelper(30); axes.position.set(-w / 2, -d / 2, 0.02); g.add(axes); }
+    if (n > 1) { const lab = plateLabel(t("plates.plate", { i }), active); lab.position.set(-w / 2 + 34, d / 2 + 12, 0.1); g.add(lab); }
+    bedGroup.add(g);
+  }
+}
+buildBeds();
 
 const partsGroup = new THREE.Group(); scene.add(partsGroup);
 const measureGroup = new THREE.Group(); scene.add(measureGroup);
@@ -196,8 +226,9 @@ async function loadMesh(part) {
   // welded meshes: keep flat faces flat and sharp edges sharp, but curved surfaces smooth
   const shaded = toCreasedNormals(geo, Math.PI / 6);
   const mesh = new THREE.Mesh(shaded, material(part.color));
-  mesh.position.copy(centre);
-  mesh.userData.name = part.name; mesh.userData.base = centre.clone();
+  mesh.userData.local = centre.clone();   // position on its own plate; the plate offset is added in syncSceneProps
+  mesh.position.copy(centre).add(plateOrigin(partPlate(part)));
+  mesh.userData.name = part.name; mesh.userData.base = mesh.position.clone();
   const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25),
     new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 }));
   mesh.add(edges);
@@ -212,9 +243,14 @@ async function loadMesh(part) {
 function syncSceneProps() {
   const names = new Set(S.project.parts.map((p) => p.name));
   for (const [n, m] of S.meshes) if (!names.has(n)) { if (tc.object === m.mesh) tc.detach(); partsGroup.remove(m.mesh); S.meshes.delete(n); }
+  buildBeds();
   for (const p of S.project.parts) {
     const m = S.meshes.get(p.name); if (!m) continue;
-    m.mesh.visible = p.visible && p.info.ok;
+    if (!tc.dragging) {
+      m.mesh.position.copy(m.mesh.userData.local).add(plateOrigin(partPlate(p)));
+      m.mesh.userData.base = m.mesh.position.clone();
+    }
+    m.mesh.visible = p.visible && p.info.ok && onShownPlate(p);
     m.mesh.material.dispose(); m.mesh.material = material(p.color);
     applyOverhangColors(m, p.color);
     m.edges.visible = S.edges;
@@ -226,24 +262,40 @@ function syncSceneProps() {
   if (S.clip) updateClipPlane();
 }
 
+// world-space bounding box (plate offsets included) of the given parts, or of the visible parts on the shown plate(s)
 function bbox(names) {
   const b = new THREE.Box3();
   for (const p of S.project.parts) {
     if (names && !names.includes(p.name)) continue;
-    if (!names && !p.visible) continue;
+    if (!names && (!p.visible || !onShownPlate(p))) continue;
     if (!p.info.ok) continue;
-    b.expandByPoint(new THREE.Vector3(...p.info.bbox_min)); b.expandByPoint(new THREE.Vector3(...p.info.bbox_max));
+    const o = plateOrigin(partPlate(p));
+    b.expandByPoint(new THREE.Vector3(...p.info.bbox_min).add(o)); b.expandByPoint(new THREE.Vector3(...p.info.bbox_max).add(o));
   }
   return b;
+}
+// plates whose (visible, exported) contents don't fit on one bed
+function overfullPlates() {
+  const boxes = new Map();
+  for (const p of S.project.parts) {
+    if (!p.visible || !p.export || !p.info.ok) continue;
+    const k = partPlate(p); if (!boxes.has(k)) boxes.set(k, new THREE.Box3());
+    boxes.get(k).expandByPoint(new THREE.Vector3(...p.info.bbox_min)).expandByPoint(new THREE.Vector3(...p.info.bbox_max));
+  }
+  const bed = S.project.bed || [250, 250, 250];
+  return [...boxes].filter(([, b]) => { const s = b.getSize(new THREE.Vector3()); return s.x > bed[0] + 1e-6 || s.y > bed[1] + 1e-6 || s.z > bed[2] + 1e-6; })
+    .map(([k]) => k).sort((a, b) => a - b);
 }
 function updateDims() {
   const all = bbox();
   let txt = "";
+  const over = overfullPlates();
   if (!all.isEmpty()) {
     const s = all.getSize(new THREE.Vector3());
     txt += `${t("dims.total")}  ${s.x.toFixed(1)} × ${s.y.toFixed(1)} × ${s.z.toFixed(1)} mm`;
-    if (s.x > 250 || s.y > 250 || s.z > 250) txt += "  " + t("dims.toobig");
+    if (plateCount() === 1 && over.length) txt += "  " + t("dims.toobig");
   }
+  if (plateCount() > 1) for (const k of over) txt += "\n" + t("plates.over", { i: k });
   const p = S.selected && S.project.parts.find((q) => q.name === S.selected);
   if (p && p.info.ok) {
     const [x, y, z] = p.info.size;
@@ -271,8 +323,19 @@ function updateClipPlane() {
 }
 
 function setView(v) {
-  const b = bbox(); const c = b.isEmpty() ? new THREE.Vector3(0, 0, 10) : b.getCenter(new THREE.Vector3());
-  const r = b.isEmpty() ? 80 : Math.max(b.getSize(new THREE.Vector3()).length(), 20);
+  const b = bbox();
+  if (plateCount() > 1) {  // several beds: frame the shown bed(s), not only the parts on them
+    const bed = S.project.bed || [250, 250, 250];
+    for (let i = 1; i <= plateCount(); i++) {
+      if (S.plate && i !== S.plate) continue;
+      const o = plateOrigin(i);
+      b.expandByPoint(new THREE.Vector3(o.x - bed[0] / 2, o.y - bed[1] / 2, 0));
+      b.expandByPoint(new THREE.Vector3(o.x + bed[0] / 2, o.y + bed[1] / 2, 0));
+    }
+  }
+  const empty = S.plate ? plateOrigin(S.plate).add(new THREE.Vector3(0, 0, 10)) : new THREE.Vector3(0, 0, 10);
+  const c = b.isEmpty() ? empty : b.getCenter(new THREE.Vector3());
+  const r = b.isEmpty() ? (S.plate ? 250 : 80) : Math.max(b.getSize(new THREE.Vector3()).length(), 20);
   const d = r * 1.6;
   const dirs = { iso: [-0.6, -0.9, 0.7], front: [0, -1, 0.0001], top: [0, -0.0001, 1], right: [1, 0, 0.0001], fit: null };
   const dir = dirs[v] ? new THREE.Vector3(...dirs[v]).normalize()
@@ -414,8 +477,14 @@ function renderParts() {
       <span class="nm">${p.name}</span>
       ${p.type === "mesh" ? '<span class="mesh">mesh</span>' : ""}
       ${p.info.ok ? "" : '<span class="err" title="' + (p.info.error || "").replace(/"/g, "'") + '">⚠</span>'}
+      ${plateCount() > 1 ? `<span class="slot" title="${t("insp.plate")}">B${partPlate(p)}</span>` : ""}
       <span class="slot" title="${t("parts.slot")}">F${p.filament}</span>`;
-    d.onclick = (e) => { if (e.target.classList.contains("eye")) return; select(p.name); };
+    if (!onShownPlate(p)) d.style.opacity = 0.5;
+    d.onclick = (e) => {
+      if (e.target.classList.contains("eye")) return;
+      if (!onShownPlate(p)) showPlate(partPlate(p), false);  // selecting a part on another bed switches to it
+      select(p.name);
+    };
     d.querySelector(".eye").onclick = () => { pushUndo(p.name); savePart(p.name, { visible: !p.visible }); };
     box.appendChild(d);
   }
@@ -439,6 +508,12 @@ function renderInspector(force = false) {
     $("#pName").onchange = (e) => savePart(p.name, { new_name: e.target.value.trim() }, e.target.value.trim());
     $("#pColor").onchange = (e) => { pushUndo(S.selected); savePart(S.selected, { color: e.target.value }); };
     $("#pFilament").onchange = (e) => { pushUndo(S.selected); savePart(S.selected, { filament: +e.target.value }); };
+    $("#pPlate").onchange = async (e) => {
+      const k = +e.target.value; pushUndo(S.selected);
+      const follow = !!S.plate;
+      await savePart(S.selected, { plate: k });
+      if (follow) showPlate(k); else renderPlates();  // follow the part to its new bed
+    };
     $("#pVisible").onchange = (e) => { pushUndo(S.selected); savePart(S.selected, { visible: e.target.checked }); };
     $("#pExport").onchange = (e) => { pushUndo(S.selected); savePart(S.selected, { export: e.target.checked }); };
     ins.querySelectorAll("[data-i]").forEach((inp) => inp.onchange = () => {
@@ -471,6 +546,12 @@ function renderInspector(force = false) {
   $("#pName").value = p.name;
   $("#pColor").value = p.color.length === 7 ? p.color : "#cccccc";
   $("#pFilament").value = p.filament;
+  const ps = $("#pPlate"); const n = plateCount();
+  if (ps.options.length !== n + 1) {
+    ps.innerHTML = "";
+    for (let i = 1; i <= n + 1; i++) ps.add(new Option(t("plates.plate", { i }) + (i > n ? " ＋" : ""), i));
+  }
+  ps.value = partPlate(p);
   $("#pVisible").checked = p.visible; $("#pExport").checked = p.export;
   ins.querySelectorAll("[data-i]").forEach((inp, i) => { if (document.activeElement !== inp) inp.value = +(+p.location[i]).toFixed(3); });
   const scaleVals = p.scale || [1, 1, 1];
@@ -507,7 +588,7 @@ async function runCode() {
 function snapshotPart(name) {
   const p = S.project?.parts?.find((q) => q.name === name);
   if (!p) return null;
-  return { color: p.color, filament: p.filament, visible: p.visible, export: p.export,
+  return { color: p.color, filament: p.filament, visible: p.visible, export: p.export, plate: partPlate(p),
     location: [...p.location], scale: [...(p.scale || [1, 1, 1])], code: p.code };
 }
 function refreshUndoButtons() {
@@ -559,7 +640,8 @@ function apply(summary, force = false) {
     S.project = summary;
     if (S.selected && !summary.parts.find((p) => p.name === S.selected)) S.selected = null;
     await Promise.all(summary.parts.map(loadMesh));
-    renderParams(); renderParts(); renderInspector(force); syncSceneProps(); renderCheckpoints();
+    if (S.plate > plateCount()) S.plate = 0;
+    renderParams(); renderParts(); renderInspector(force); syncSceneProps(); renderCheckpoints(); renderPlates();
     if (document.activeElement !== $("#notes")) $("#notes").value = summary.notes || "";
     if (document.activeElement !== $("#common")) { $("#common").value = summary.common || ""; S.dirtyCommon = false; $("#commonRun").classList.remove("dirty"); }
     document.title = `CAD-Studio · ${summary.name}`;
@@ -577,13 +659,13 @@ async function loadProjects() {
 }
 $("#projectSelect").onchange = async (e) => {
   for (const m of S.meshes.values()) partsGroup.remove(m.mesh);
-  S.meshes.clear(); S.selected = null;
+  S.meshes.clear(); S.selected = null; S.plate = 0;
   await apply(await api("/api/projects", { method: "POST", body: JSON.stringify({ name: e.target.value }) }));
 };
 $("#newProject").onclick = async () => {
   const n = prompt(t("project.prompt")); if (!n) return;
   for (const m of S.meshes.values()) partsGroup.remove(m.mesh);
-  S.meshes.clear(); S.selected = null;
+  S.meshes.clear(); S.selected = null; S.plate = 0;
   await apply(await api("/api/projects", { method: "POST", body: JSON.stringify({ name: n }) }));
   loadProjects();
 };
@@ -617,7 +699,7 @@ const TEMPLATES = {
 document.querySelectorAll("[data-add]").forEach((b) => b.onclick = async () => {
   const kind = b.dataset.add;
   let name = kind, i = 2; while (S.project.parts.some((p) => p.name === name)) name = `${kind}${i++}`;
-  await savePart(name, { code: TEMPLATES[kind], type: "code" }, name, true);
+  await savePart(name, { code: TEMPLATES[kind], type: "code", plate: S.plate || 1 }, name, true);
 });
 $("#importFile").onchange = async (e) => {
   const f = e.target.files[0]; if (!f) return;
@@ -628,17 +710,68 @@ $("#importFile").onchange = async (e) => {
 };
 async function doExport(format) {
   try {
-    const res = await api("/api/export", { method: "POST", body: JSON.stringify({ format, flavor: $("#exportFlavor").value, mode: $("#exportMode").value }) });
+    const how = plateCount() > 1 ? $("#exportPlates").value : "all";
+    const res = await api("/api/export", { method: "POST", body: JSON.stringify({
+      format, flavor: $("#exportFlavor").value, mode: $("#exportMode").value,
+      split_plates: how === "split", plate: how === "current" && S.plate ? S.plate : null }) });
     const links = res.download.map((u) => `<a href="${u}">${decodeURIComponent(u.split("/").pop().split("%2F").pop())}</a>`).join("<br>");
     let slots = "";
     if (res.filament_slots) slots = "\n" + Object.entries(res.filament_slots).map(([k, v]) => `Slot ${k}: ${v.join(", ")}`).join("\n");
-    toast(`${t("export.saved", { path: res.path || res.files.join(", ") })}${slots}${res.warnings && res.warnings.length ? "\n⚠ " + res.warnings.join("\n") : ""}\n${links}`, "ok", 15000);
+    toast(`${t("export.saved", { path: res.path || (res.paths || res.files).join(", ") })}${slots}${res.warnings && res.warnings.length ? "\n⚠ " + res.warnings.join("\n") : ""}\n${links}`, "ok", 15000);
     res.download.forEach((u) => { const a = document.createElement("a"); a.href = u; a.download = ""; document.body.appendChild(a); a.click(); a.remove(); });
   } catch (e) { toast(e.message, "err", 8000); }
 }
 $("#export3mf").onclick = () => doExport("3mf");
 $("#exportStl").onclick = () => doExport("stl");
 $("#exportStep").onclick = () => doExport("step");
+
+// ------------------------------------------------------------------ build plates (beds)
+function renderPlates() {
+  if (!S.project) return;
+  const n = plateCount(); const over = overfullPlates();
+  const box = $("#plateTabs"); box.innerHTML = "";
+  const mk = (label, k, title) => {
+    const b = document.createElement("button"); b.textContent = label; if (title) b.title = title;
+    b.classList.toggle("on", S.plate === k || (n === 1 && k === 1));
+    if (k && over.includes(k)) b.classList.add("over");
+    b.onclick = () => showPlate(k);
+    box.appendChild(b);
+  };
+  if (n > 1) mk(t("plates.all"), 0, t("plates.tab.title", { i: 0 }));
+  for (let i = 1; i <= n; i++) mk(t("plates.plate", { i }), i, t("plates.tab.title", { i }));
+  $("#plateDel").disabled = n <= 1;
+  $("#exportPlates").classList.toggle("hidden", n <= 1);
+}
+function showPlate(k, focus = true) {
+  if (k > plateCount() || k < 0) return;
+  S.plate = plateCount() > 1 ? k : 0;
+  const sel = S.selected && S.project.parts.find((q) => q.name === S.selected);
+  if (sel && !onShownPlate(sel)) { S.selected = null; renderInspector(); }
+  renderParts(); syncSceneProps(); renderPlates();
+  if (focus) setView("fit");
+}
+$("#plateAdd").onclick = async () => {
+  try {
+    await apply(await api("/api/plates", { method: "POST" }));
+    showPlate(plateCount());
+  } catch (e) { toast(e.message, "err"); }
+};
+$("#plateDel").onclick = async () => {
+  const n = plateCount(); if (n <= 1) return;
+  const k = S.plate || n;
+  if (!confirm(t("plates.remove.confirm", { i: k, to: Math.max(1, k - 1) }))) return;
+  try { S.plate = 0; await apply(await api(`/api/plates/${k}`, { method: "DELETE" })); setView("fit"); }
+  catch (e) { toast(e.message, "err"); }
+};
+$("#plateArrange").onclick = async () => {
+  try {
+    const res = await api("/api/plates/arrange", { method: "POST", body: "{}" });
+    S.plate = 0; await apply(res);
+    const w = res.arrange.warnings || [];
+    toast(t("plates.arrange.done", { n: res.arrange.plates }) + (w.length ? "\n⚠ " + w.join("\n") : ""), w.length ? "" : "ok");
+    setView("fit");
+  } catch (e) { toast(e.message, "err"); }
+};
 
 // view bar
 document.querySelectorAll("[data-view]").forEach((b) => b.onclick = () => setView(b.dataset.view));
@@ -682,6 +815,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "m") $("#toggleMeasure").click();
   if (e.key === "c") $("#toggleClip").click();
   if (e.key === "f") setView("fit");
+  if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) showPlate(+e.key);
   if (e.key === "Escape") { select(null); if (S.measure) clearMeasure(); }
   if (e.key === "Delete" && S.selected) $("#pDel")?.click();
   if ((e.key === "z" || e.key === "Z") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
@@ -698,7 +832,7 @@ function connectEvents() {
     const { project, rev } = JSON.parse(ev.data);
     if (project !== lastProj && lastProj !== null) {
       for (const m of S.meshes.values()) partsGroup.remove(m.mesh);
-      S.meshes.clear(); S.selected = null; loadProjects();
+      S.meshes.clear(); S.selected = null; S.plate = 0; loadProjects();
     }
     if (rev !== lastRev || project !== lastProj) {
       lastRev = rev; lastProj = project;
@@ -712,7 +846,7 @@ applyI18n();
 $("#langSelect").value = LANG;
 $("#langSelect").onchange = (e) => {
   setLang(e.target.value);
-  if (S.project) { renderParams(); renderParts(); renderInspector(true); updateDims(); }
+  if (S.project) { renderParams(); renderParts(); renderInspector(true); updateDims(); renderPlates(); syncSceneProps(); }
 };
 
 await loadProjects();

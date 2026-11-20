@@ -85,6 +85,19 @@ def _token_from(request: Request) -> str | None:
 
 
 @app.middleware("http")
+async def no_cache_middleware(request: Request, call_next):
+    """The editor and its API change whenever Claude edits the project (or the container is updated):
+    never let a browser or a reverse proxy serve a stale copy (that's what made a hard refresh necessary)."""
+    resp = await call_next(request)
+    path = request.url.path
+    if path.startswith("/api/") or path == "/":
+        resp.headers.setdefault("Cache-Control", "no-store")
+    elif path.startswith("/static/") and "/vendor/" not in path:
+        resp.headers["Cache-Control"] = "no-cache"  # revalidate (cheap 304) instead of trusting a stale file
+    return resp
+
+
+@app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     expected = links.token()
     path = request.url.path
@@ -251,7 +264,8 @@ def delete_checkpoint(name: str):
 @app.put("/api/parts/{name}")
 def put_part(name: str, body: dict = Body(...)):
     proj = _proj()
-    allowed = {k: body[k] for k in ("code", "color", "filament", "visible", "export", "location", "note", "type") if k in body}
+    allowed = {k: body[k] for k in ("code", "color", "filament", "visible", "export", "location", "scale", "note",
+                                    "type", "plate") if k in body}
     proj.upsert_part(name, **allowed)
     if body.get("new_name") and body["new_name"] != name:
         proj.rename_part(name, body["new_name"])
@@ -311,6 +325,27 @@ def array_part_polar(name: str, body: dict = Body(default={})):
     return {**res, **proj.summary()}
 
 
+@app.post("/api/plates")
+def add_plate():
+    proj = _proj()
+    proj.add_plate()
+    return proj.summary()
+
+
+@app.delete("/api/plates/{plate}")
+def remove_plate(plate: int):
+    proj = _proj()
+    proj.remove_plate(plate)
+    return proj.summary()
+
+
+@app.post("/api/plates/arrange")
+def arrange_plates(body: dict = Body(default={})):
+    proj = _proj()
+    res = proj.arrange_plates(body.get("names"), margin=float(body.get("margin", 5.0)))
+    return {"arrange": res, **proj.summary()}
+
+
 @app.post("/api/import")
 async def import_file(file: UploadFile, name: str | None = None):
     """Upload STL/3MF/OBJ as a reference part. Also usable from a shell:
@@ -340,8 +375,8 @@ def mesh(name: str):
 
 
 @app.get("/api/preview.png")
-def preview(view: str = "iso", overhangs: bool = False, overhang_angle: float = 45.0):
-    png, _ = render_png(_proj(), view=view, overhangs=overhangs, overhang_angle=overhang_angle)
+def preview(view: str = "iso", overhangs: bool = False, overhang_angle: float = 45.0, plate: int | None = None):
+    png, _ = render_png(_proj(), view=view, overhangs=overhangs, overhang_angle=overhang_angle, plate=plate)
     return Response(png, media_type="image/png")
 
 
@@ -351,8 +386,9 @@ def export(body: dict = Body(...)):
     fmt = body.get("format", "3mf")
     if fmt == "3mf":
         res = export_3mf(proj, mode=body.get("mode", "assembly"), flavor=body.get("flavor", "orca"),
-                         thumbnail=thumbnail(proj))
-        files = [res["path"]]
+                         thumbnail=thumbnail(proj), plate=body.get("plate"),
+                         split_plates=bool(body.get("split_plates")))
+        files = res["paths"] if "paths" in res else [res["path"]]
     elif fmt == "stl":
         res = export_stl(proj, separate=bool(body.get("separate", False)))
         files = res["files"]
