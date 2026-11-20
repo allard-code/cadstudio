@@ -131,6 +131,50 @@ def test_apply_unknown_preset_raises(proj):
         proj.apply_preset("nope")
 
 
+def test_array_part_creates_grid_with_default_spacing(proj):
+    proj.upsert_part("clip", code=BOX)  # 20 x 10 x 5, margin default 3 -> spacing 23 x 13
+    res = proj.array_part("clip", count_x=3, count_y=2)
+    assert res["parts"] == ["clip", "clip_1_0", "clip_2_0", "clip_0_1", "clip_1_1", "clip_2_1"]
+    assert res["fits_bed"] is True
+    assert res["bed_footprint"] == [66.0, 23.0]
+    assert proj.find("clip_2_1")["location"][:2] == [46.0, 13.0]
+    assert proj.find("clip_1_0")["location"][:2] == [23.0, 0.0]
+    # copies are independent parts with their own geometry, not references
+    assert proj.build("clip_2_1")["info"]["ok"]
+
+
+def test_array_part_respects_explicit_spacing_and_existing_location(proj):
+    proj.upsert_part("base", code=BOX, location=[5, 5, 0, 0, 0, 0])
+    res = proj.array_part("base", count_x=2, count_y=1, spacing_x=50)
+    assert proj.find("base_1_0")["location"][:3] == [55.0, 5.0, 0.0]
+    assert res["bed_footprint"][0] == 70.0  # (2-1)*50 + 20
+
+
+def test_array_part_avoids_name_collisions(proj):
+    proj.upsert_part("clip", code=BOX)
+    proj.upsert_part("clip_1_0", code=BOX)  # pre-existing name that would collide
+    res = proj.array_part("clip", count_x=2, count_y=1)
+    assert "clip_1_0_1" in res["parts"]
+
+
+def test_array_part_rejects_too_many_copies(proj):
+    proj.upsert_part("clip", code=BOX)
+    with pytest.raises(P.PartError, match="more than 200"):
+        proj.array_part("clip", count_x=20, count_y=11)
+
+
+def test_array_part_rejects_zero_count(proj):
+    proj.upsert_part("clip", code=BOX)
+    with pytest.raises(P.PartError, match="at least 1"):
+        proj.array_part("clip", count_x=0)
+
+
+def test_array_part_rejects_broken_part(proj):
+    proj.upsert_part("bad", code="result = Box(1, 2)")
+    with pytest.raises(P.PartError, match="doesn't build ok"):
+        proj.array_part("bad", count_x=2)
+
+
 def test_delete_preset(proj):
     proj.set_params({"w": 10})
     proj.save_preset("small")

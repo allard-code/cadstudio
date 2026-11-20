@@ -251,6 +251,54 @@ class Project:
             del self.presets[name]
             self.save()
 
+    def array_part(
+        self,
+        name: str,
+        count_x: int = 1,
+        count_y: int = 1,
+        spacing_x: float | None = None,
+        spacing_y: float | None = None,
+        margin: float = 3.0,
+    ) -> dict:
+        """Duplicate a part in a grid on the bed, e.g. to print N copies of a small part on one plate.
+
+        spacing_x/spacing_y: centre-to-centre distance in mm; default is the part's own size + margin so
+        copies don't touch. Each copy is an independent part ("<name>_<i>_<j>"), not a reference.
+        """
+        if count_x < 1 or count_y < 1:
+            raise PartError("count_x/count_y must be at least 1")
+        if count_x * count_y > 200:
+            raise PartError("That's more than 200 copies - probably not intended; lower count_x/count_y")
+        spec = self.find(name)
+        info = self.build(name)["info"]
+        if not info.get("ok"):
+            raise PartError(f"Can't array '{name}': it doesn't build ok ({info.get('error')})")
+        sx = spacing_x if spacing_x is not None else info["size"][0] + margin
+        sy = spacing_y if spacing_y is not None else info["size"][1] + margin
+        base_loc = list(spec.get("location") or [0] * 6)
+        created = [name]
+        for j in range(count_y):
+            for i in range(count_x):
+                if i == 0 and j == 0:
+                    continue
+                new_name, k = f"{name}_{i}_{j}", 1
+                while self.has(new_name):
+                    new_name, k = f"{name}_{i}_{j}_{k}", k + 1
+                loc = list(base_loc)
+                loc[0] += i * sx
+                loc[1] += j * sy
+                fields = {k2: v for k2, v in spec.items() if k2 != "name"}
+                fields["location"] = loc
+                self.upsert_part(new_name, **fields)
+                created.append(new_name)
+        total_w = (count_x - 1) * sx + info["size"][0]
+        total_h = (count_y - 1) * sy + info["size"][1]
+        return {
+            "parts": created,
+            "fits_bed": total_w <= BED[0] and total_h <= BED[1],
+            "bed_footprint": [round(total_w, 1), round(total_h, 1)],
+        }
+
     def import_mesh(self, name: str, src: str | Path, color: str | None = None, filament: int | None = None) -> dict:
         src = Path(src).expanduser()
         if not src.exists():

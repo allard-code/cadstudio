@@ -262,6 +262,21 @@ def dup_part(name: str):
     return {"new_name": new, **proj.summary()}
 
 
+@app.post("/api/parts/{name}/array")
+def array_part(name: str, body: dict = Body(default={})):
+    """Duplicate a part in a grid on the bed; body: count_x, count_y, spacing_x, spacing_y, margin (all optional)."""
+    proj = _proj()
+    res = proj.array_part(
+        name,
+        count_x=body.get("count_x", 1),
+        count_y=body.get("count_y", 1),
+        spacing_x=body.get("spacing_x"),
+        spacing_y=body.get("spacing_y"),
+        margin=body.get("margin", 3.0),
+    )
+    return {**res, **proj.summary()}
+
+
 @app.post("/api/import")
 async def import_file(file: UploadFile, name: str | None = None):
     """Upload STL/3MF/OBJ as a reference part. Also usable from a shell:

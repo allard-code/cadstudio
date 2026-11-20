@@ -27,6 +27,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Parameter presets: save the current `set_params` values under a name and switch back to them later (e.g. a
   "Large"/"Small" variant of the same design) without retyping every number. A dropdown + save/delete buttons
   next to Parameters in the editor; `save_param_preset`/`apply_param_preset`/`delete_param_preset` for Claude.
+- `array_part`: duplicate a part in a grid on the bed (e.g. print N copies of a small part on one plate), with
+  sensible default spacing (part size + margin) or explicit `spacing_x`/`spacing_y`. Reports whether the whole
+  array still fits the bed. Available to Claude and as `POST /api/parts/{name}/array`.
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.

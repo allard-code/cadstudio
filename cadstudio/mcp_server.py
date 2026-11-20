@@ -221,6 +221,16 @@ def add_primitive(name: str, kind: str, size: list[float], position: list[float]
 
 
 @mcp.tool()
+def array_part(name: str, count_x: int = 1, count_y: int = 1, spacing_x: float | None = None,
+               spacing_y: float | None = None, margin: float = 3.0) -> dict:
+    """Duplicate a part in a grid on the bed, e.g. to print N copies of a small part on one plate.
+    spacing_x/spacing_y: centre-to-centre distance in mm; default is the part's own size + margin so copies
+    don't touch. Each copy is an independent part (named "<name>_<i>_<j>"), not a reference.
+    Returns the new part names and whether the whole array fits the bed."""
+    return _proj().array_part(name, count_x, count_y, spacing_x, spacing_y, margin)
+
+
+@mcp.tool()
 def delete_part(name: str) -> dict:
     """Delete a part."""
     proj = _proj()
