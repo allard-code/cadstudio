@@ -296,6 +296,21 @@ def array_part(name: str, body: dict = Body(default={})):
     return {**res, **proj.summary()}
 
 
+@app.post("/api/parts/{name}/array_polar")
+def array_part_polar(name: str, body: dict = Body(default={})):
+    """Duplicate a part in a circle; body: count, radius, center, start_angle, rotate_copies (all optional)."""
+    proj = _proj()
+    res = proj.array_part_polar(
+        name,
+        count=body.get("count", 6),
+        radius=body.get("radius"),
+        center=body.get("center"),
+        start_angle=body.get("start_angle", 0.0),
+        rotate_copies=body.get("rotate_copies", False),
+    )
+    return {**res, **proj.summary()}
+
+
 @app.post("/api/import")
 async def import_file(file: UploadFile, name: str | None = None):
     """Upload STL/3MF/OBJ as a reference part. Also usable from a shell:

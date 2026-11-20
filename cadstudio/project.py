@@ -369,6 +369,63 @@ class Project:
             "bed_footprint": [round(total_w, 1), round(total_h, 1)],
         }
 
+    def array_part_polar(
+        self,
+        name: str,
+        count: int = 6,
+        radius: float | None = None,
+        center: list[float] | None = None,
+        start_angle: float = 0.0,
+        rotate_copies: bool = False,
+    ) -> dict:
+        """Duplicate a part in a circle (e.g. a bolt-hole pattern, a ventilation grille, or spoke/tooth-like
+        shapes). count: total copies including the original (which keeps its current position).
+        radius: distance from the centre; default is the part's own current distance from centre, or if
+        that's ~0, half its own footprint diagonal plus a small margin.
+        center: [x, y] of the circle; default is the part's own current XY (so by default copies fan out
+        around wherever the part already is - pass an explicit centre to array around a different point).
+        start_angle: only used when radius/center don't already fix the first copy's angle (degrees).
+        rotate_copies: also rotate each copy by its angular offset around Z - for teeth/spokes that should
+        point outward with the pattern, rather than staying parallel to the original.
+        """
+        if count < 1:
+            raise PartError("count must be at least 1")
+        if count > 200:
+            raise PartError("That's more than 200 copies - probably not intended; lower count")
+        spec = self.find(name)
+        info = self.build(name)["info"]
+        if not info.get("ok"):
+            raise PartError(f"Can't array '{name}': it doesn't build ok ({info.get('error')})")
+        base_loc = list(spec.get("location") or [0] * 6)
+        cx, cy = center if center is not None else (base_loc[0], base_loc[1])
+        dx0, dy0 = base_loc[0] - cx, base_loc[1] - cy
+        r0 = math.hypot(dx0, dy0)
+        if radius is None:
+            radius = r0 if r0 > 1e-6 else math.hypot(info["size"][0], info["size"][1]) / 2 + 2
+        a0 = math.atan2(dy0, dx0) if r0 > 1e-6 else math.radians(start_angle)
+        created = [name]
+        for i in range(1, count):
+            ang = a0 + 2 * math.pi * i / count
+            new_name, k = f"{name}_p{i}", 1
+            while self.has(new_name):
+                new_name, k = f"{name}_p{i}_{k}", k + 1
+            loc = list(base_loc)
+            loc[0] = round(cx + radius * math.cos(ang), 3)
+            loc[1] = round(cy + radius * math.sin(ang), 3)
+            if rotate_copies:
+                loc[5] = (loc[5] + math.degrees(ang - a0)) % 360
+            fields = {k2: v for k2, v in spec.items() if k2 != "name"}
+            fields["location"] = loc
+            self.upsert_part(new_name, **fields)
+            created.append(new_name)
+        span = 2 * radius + max(info["size"][0], info["size"][1])
+        return {
+            "parts": created,
+            "center": [round(cx, 3), round(cy, 3)],
+            "radius": round(radius, 2),
+            "fits_bed": span <= min(BED[0], BED[1]),
+        }
+
     def import_mesh(self, name: str, src: str | Path, color: str | None = None, filament: int | None = None) -> dict:
         src = Path(src).expanduser()
         if not src.exists():

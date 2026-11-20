@@ -58,6 +58,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Editor: a Section view (toolbar button / `C`). Cuts the model with a plane along X/Y/Z (slider + flip
   button) so you can see the interior - wall thickness, infill cavities, how an inlay fits - without
   exporting and opening the slicer. Frontend-only (three.js clipping planes), no new server API.
+- `array_part_polar`: duplicate a part in a circle (bolt-hole patterns, ventilation grilles, spoke/tooth-like
+  shapes), alongside the existing grid `array_part`. Default radius/centre fan copies out around the part's
+  own current position; pass an explicit `center` to array around a different point. `rotate_copies` turns
+  each copy to face outward with the pattern. Available to Claude and as `POST /api/parts/{name}/array_polar`.
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.

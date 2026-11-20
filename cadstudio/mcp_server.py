@@ -261,6 +261,21 @@ def array_part(name: str, count_x: int = 1, count_y: int = 1, spacing_x: float |
 
 
 @mcp.tool()
+def array_part_polar(name: str, count: int = 6, radius: float | None = None, center: list[float] | None = None,
+                     start_angle: float = 0.0, rotate_copies: bool = False) -> dict:
+    """Duplicate a part in a circle - a bolt-hole pattern, a ventilation grille, spoke/tooth-like shapes.
+    count: total copies including the original (which keeps its current position).
+    radius: distance from the centre; default is the part's own current distance from centre, or if that's
+    ~0, half its own footprint diagonal plus a small margin.
+    center: [x, y] of the circle; default is the part's own current XY (copies fan out around wherever the
+    part already is - pass an explicit centre to array around a different point on the bed).
+    rotate_copies: also rotate each copy by its angular offset around Z, for teeth/spokes that should point
+    outward with the pattern rather than stay parallel to the original.
+    Each copy is an independent part (named "<name>_p<i>"), not a reference."""
+    return _proj().array_part_polar(name, count, radius, center, start_angle, rotate_copies)
+
+
+@mcp.tool()
 def delete_part(name: str) -> dict:
     """Delete a part."""
     proj = _proj()

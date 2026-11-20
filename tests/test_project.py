@@ -409,3 +409,56 @@ def test_checkpoint_includes_imported_step_files(proj, tmp_path):
     proj.restore_checkpoint("v1")
     assert proj.has("ref")
     assert proj.build("ref")["info"]["ok"]
+
+
+def test_array_part_polar_default_fans_around_own_position(proj):
+    proj.upsert_part("clip", code=BOX)  # at origin; default center = its own XY -> falls back to size-based radius
+    res = proj.array_part_polar("clip", count=4)
+    assert res["parts"] == ["clip", "clip_p1", "clip_p2", "clip_p3"]
+    assert res["center"] == [0.0, 0.0]
+    r = res["radius"]
+    assert r > 10  # bigger than half the part's own 20x10 footprint
+    p1 = proj.find("clip_p1")["location"][:2]
+    p2 = proj.find("clip_p2")["location"][:2]
+    assert abs((p1[0] ** 2 + p1[1] ** 2) ** 0.5 - r) < 1e-3
+    assert abs((p2[0] ** 2 + p2[1] ** 2) ** 0.5 - r) < 1e-3
+
+
+def test_array_part_polar_fans_around_explicit_center(proj):
+    proj.upsert_part("clip", code=BOX, location=[20, 0, 0, 0, 0, 0])
+    res = proj.array_part_polar("clip", count=4, center=[0, 0])
+    assert res["center"] == [0.0, 0.0]
+    assert abs(res["radius"] - 20.0) < 1e-6
+    assert proj.find("clip_p1")["location"][:2] == [0.0, 20.0]
+    assert proj.find("clip_p2")["location"][:2] == [-20.0, 0.0]
+    assert proj.find("clip_p3")["location"][:2] == [0.0, -20.0]
+    # the original part itself is untouched
+    assert proj.find("clip")["location"][:2] == [20.0, 0.0]
+
+
+def test_array_part_polar_rotate_copies(proj):
+    proj.upsert_part("tooth", code=BOX, location=[20, 0, 0, 0, 0, 0])
+    proj.array_part_polar("tooth", count=4, center=[0, 0], rotate_copies=True)
+    assert abs(proj.find("tooth_p1")["location"][5] - 90.0) < 1e-6
+    assert abs(proj.find("tooth_p2")["location"][5] - 180.0) < 1e-6
+
+
+def test_array_part_polar_avoids_name_collisions(proj):
+    proj.upsert_part("clip", code=BOX)
+    proj.upsert_part("clip_p1", code=BOX)
+    res = proj.array_part_polar("clip", count=2)
+    assert "clip_p1_1" in res["parts"]
+
+
+def test_array_part_polar_rejects_bad_count(proj):
+    proj.upsert_part("clip", code=BOX)
+    with pytest.raises(P.PartError, match="at least 1"):
+        proj.array_part_polar("clip", count=0)
+    with pytest.raises(P.PartError, match="more than 200"):
+        proj.array_part_polar("clip", count=500)
+
+
+def test_array_part_polar_rejects_broken_part(proj):
+    proj.upsert_part("bad", code="result = Box(1, 2)")
+    with pytest.raises(P.PartError, match="doesn't build ok"):
+        proj.array_part_polar("bad", count=4)
