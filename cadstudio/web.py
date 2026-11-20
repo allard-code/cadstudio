@@ -229,6 +229,25 @@ def delete_preset(name: str):
     return proj.summary()
 
 
+@app.post("/api/checkpoints")
+def save_checkpoint(body: dict = Body(...)):
+    proj = _proj()
+    proj.save_checkpoint(body["name"])
+    return proj.summary()
+
+
+@app.post("/api/checkpoints/{name}/restore")
+def restore_checkpoint(name: str):
+    return _proj().restore_checkpoint(name)
+
+
+@app.delete("/api/checkpoints/{name}")
+def delete_checkpoint(name: str):
+    proj = _proj()
+    proj.delete_checkpoint(name)
+    return proj.summary()
+
+
 @app.put("/api/parts/{name}")
 def put_part(name: str, body: dict = Body(...)):
     proj = _proj()

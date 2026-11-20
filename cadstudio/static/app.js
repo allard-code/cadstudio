@@ -328,6 +328,31 @@ $("#presetDel").onclick = async () => {
   catch (err) { toast(err.message, "err"); }
 };
 
+// ------------------------------------------------------------------ checkpoints (full project snapshots)
+function renderCheckpoints() {
+  const sel = $("#checkpointSelect"); const prev = sel.value;
+  const names = (S.project.checkpoints || []).map((c) => c.name);
+  sel.innerHTML = `<option value="" data-i18n="checkpoints.select"></option>` + names.map((n) => `<option value="${n}">${n}</option>`).join("");
+  if (names.includes(prev)) sel.value = prev;
+  applyI18n(sel);
+}
+$("#checkpointSave").onclick = async () => {
+  const name = prompt(t("checkpoints.save")); if (!name) return;
+  try { apply(await api("/api/checkpoints", { method: "POST", body: JSON.stringify({ name: name.trim() }) })); }
+  catch (err) { toast(err.message, "err"); }
+};
+$("#checkpointRestore").onclick = async () => {
+  const name = $("#checkpointSelect").value; if (!name) return;
+  if (!confirm(t("checkpoints.confirm", { name }))) return;
+  try { apply(await api(`/api/checkpoints/${encodeURIComponent(name)}/restore`, { method: "POST" }), true); }
+  catch (err) { toast(err.message, "err"); }
+};
+$("#checkpointDel").onclick = async () => {
+  const name = $("#checkpointSelect").value; if (!name) return;
+  try { apply(await api(`/api/checkpoints/${encodeURIComponent(name)}`, { method: "DELETE" })); }
+  catch (err) { toast(err.message, "err"); }
+};
+
 // ------------------------------------------------------------------ UI: parts list
 function renderParts() {
   const box = $("#parts"); box.innerHTML = "";
@@ -484,7 +509,7 @@ function apply(summary, force = false) {
     S.project = summary;
     if (S.selected && !summary.parts.find((p) => p.name === S.selected)) S.selected = null;
     await Promise.all(summary.parts.map(loadMesh));
-    renderParams(); renderParts(); renderInspector(force); syncSceneProps();
+    renderParams(); renderParts(); renderInspector(force); syncSceneProps(); renderCheckpoints();
     if (document.activeElement !== $("#notes")) $("#notes").value = summary.notes || "";
     if (document.activeElement !== $("#common")) { $("#common").value = summary.common || ""; S.dirtyCommon = false; $("#commonRun").classList.remove("dirty"); }
     document.title = `CAD-Studio · ${summary.name}`;

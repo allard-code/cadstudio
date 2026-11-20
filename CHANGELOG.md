@@ -34,6 +34,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   bed) are tinted orange, so you can spot where support material will be needed before slicing. A toolbar
   toggle (`O`) in the live 3D editor, and an `overhangs`/`overhang_angle` option on `render_preview` and
   `/api/preview.png` for Claude's own renders.
+- Project checkpoints: save a full snapshot of the project (parameters, every part, shared code, imported
+  meshes) under a name, and restore it later if a round of changes doesn't pan out. Different from parameter
+  presets, which only save `set_params` values. A "Checkpoints" dropdown + save/restore/delete buttons in the
+  editor; `save_checkpoint`/`list_checkpoints`/`restore_checkpoint`/`delete_checkpoint` for Claude, and
+  `POST /api/checkpoints` / `POST /api/checkpoints/{name}/restore` / `DELETE /api/checkpoints/{name}`.
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.

@@ -22,6 +22,7 @@ import shutil
 import threading
 import time
 import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -250,6 +251,69 @@ class Project:
                 raise PartError(f"Preset '{name}' does not exist")
             del self.presets[name]
             self.save()
+
+    # ---- checkpoints (full project snapshots: parts, params, code, meshes - not parameter presets)
+    def _checkpoint_dir(self, name: str) -> Path:
+        return self.dir / "checkpoints" / slugify(name)
+
+    def list_checkpoints(self) -> list[dict]:
+        root = self.dir / "checkpoints"
+        if not root.exists():
+            return []
+        out = []
+        for cpdir in root.iterdir():
+            if not cpdir.is_dir() or not (cpdir / "project.json").exists():
+                continue
+            label_file = cpdir / "label.txt"
+            label = label_file.read_text(encoding="utf-8") if label_file.exists() else cpdir.name
+            created = datetime.fromtimestamp(cpdir.stat().st_mtime, tz=timezone.utc).isoformat(timespec="seconds")
+            out.append({"name": label, "created": created})
+        return sorted(out, key=lambda c: c["created"])
+
+    def save_checkpoint(self, name: str) -> dict:
+        """Snapshot the whole project (parameters, parts, code, shared code, imported meshes) under a name,
+        so you can restore to it later if a round of changes doesn't work out."""
+        with LOCK:
+            if not name.strip():
+                raise PartError("Checkpoint name can't be empty")
+            cpdir = self._checkpoint_dir(name)
+            if cpdir.exists():
+                shutil.rmtree(cpdir)
+            cpdir.mkdir(parents=True)
+            (cpdir / "project.json").write_text(json.dumps(self.data, indent=2), encoding="utf-8")
+            (cpdir / "label.txt").write_text(name, encoding="utf-8")
+            mdir = self.dir / "meshes"
+            if mdir.exists():
+                shutil.copytree(mdir, cpdir / "meshes")
+            return next(c for c in self.list_checkpoints() if c["name"] == name)
+
+    def restore_checkpoint(self, name: str) -> dict:
+        """Replace the current project state with a previously saved checkpoint. Not undoable (save a
+        checkpoint of the current state first if you might want to come back to it)."""
+        with LOCK:
+            cpdir = self._checkpoint_dir(name)
+            if not cpdir.exists():
+                existing = [c["name"] for c in self.list_checkpoints()]
+                raise PartError(f"Checkpoint '{name}' does not exist. Existing checkpoints: {existing}")
+            prev_rev = self.rev
+            self.data = json.loads((cpdir / "project.json").read_text(encoding="utf-8"))
+            self.data["rev"] = prev_rev  # keep rev strictly increasing across restores, see save()
+            mdir = self.dir / "meshes"
+            if mdir.exists():
+                shutil.rmtree(mdir)
+            cp_mesh = cpdir / "meshes"
+            if cp_mesh.exists():
+                shutil.copytree(cp_mesh, mdir)
+            self._cache.clear()
+            self.save()
+            return self.summary()
+
+    def delete_checkpoint(self, name: str) -> None:
+        with LOCK:
+            cpdir = self._checkpoint_dir(name)
+            if not cpdir.exists():
+                raise PartError(f"Checkpoint '{name}' does not exist")
+            shutil.rmtree(cpdir)
 
     def array_part(
         self,
@@ -524,6 +588,7 @@ class Project:
             parts.append({**q, "info": infos[p["name"]]["info"]})
         return {"name": self.name, "rev": self.rev, "params": self.params, "notes": self.data.get("notes", ""),
                 "common": self.data.get("common", ""), "presets": self.data.get("presets", {}),
+                "checkpoints": self.list_checkpoints(),
                 "parts": parts, "bed": BED, "dir": str(self.dir)}
 
 

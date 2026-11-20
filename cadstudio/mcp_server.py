@@ -161,6 +161,34 @@ def delete_param_preset(name: str) -> dict:
 
 
 @mcp.tool()
+def save_checkpoint(name: str) -> dict:
+    """Snapshot the whole project (parameters, every part's code/colour/location, shared code, imported
+    meshes) under a name, so you can come back to it later. Overwrites a checkpoint of the same name.
+    Unlike parameter presets (which only save `set_params` values), this captures everything."""
+    return _proj().save_checkpoint(name)
+
+
+@mcp.tool()
+def list_checkpoints() -> list[dict]:
+    """List saved checkpoints (name + creation time), newest last."""
+    return _proj().list_checkpoints()
+
+
+@mcp.tool()
+def restore_checkpoint(name: str) -> dict:
+    """Replace the current project with a previously saved checkpoint (see save_checkpoint). Not undoable -
+    save a checkpoint of the current state first if you might want to come back to it."""
+    return _proj().restore_checkpoint(name)
+
+
+@mcp.tool()
+def delete_checkpoint(name: str) -> dict:
+    proj = _proj()
+    proj.delete_checkpoint(name)
+    return {"checkpoints": proj.list_checkpoints()}
+
+
+@mcp.tool()
 def set_part(name: str, code: str, color: str | None = None, filament: int | None = None,
              location: list[float] | None = None, scale: list[float] | None = None, note: str | None = None) -> dict:
     """Create or replace a part from build123d code. The code must assign `result`.

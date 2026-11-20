@@ -269,3 +269,72 @@ def test_import_3mf_and_obj(proj, tmp_path):
     proj.import_mesh("fromobj", obj)
     assert proj.build("from3mf")["info"]["size"] == [20.0, 10.0, 5.0]
     assert proj.build("fromobj")["info"]["size"] == [4.0, 4.0, 4.0]
+
+
+def test_checkpoint_save_and_restore_roundtrip(proj):
+    proj.upsert_part("a", code=BOX)
+    proj.set_params({"w": 10})
+    proj.save_checkpoint("v1")
+    proj.upsert_part("a", code="result = Box(5, 5, 5)")  # change after the checkpoint
+    proj.upsert_part("b", code=BOX)
+    proj.set_params({"w": 99})
+    assert set(c["name"] for c in proj.list_checkpoints()) == {"v1"}
+    proj.restore_checkpoint("v1")
+    assert proj.params == {"w": 10}
+    assert [p["name"] for p in proj.parts] == ["a"]
+    assert proj.build("a")["info"]["size"] == [20.0, 10.0, 5.0]
+
+
+def test_checkpoint_restore_keeps_rev_increasing(proj):
+    proj.upsert_part("a", code=BOX)
+    proj.save_checkpoint("v1")
+    rev_before = proj.rev
+    proj.upsert_part("a", code="result = Box(5, 5, 5)")
+    proj.upsert_part("a", code="result = Box(6, 6, 6)")
+    assert proj.rev > rev_before
+    proj.restore_checkpoint("v1")
+    assert proj.rev > rev_before  # never goes backwards, even though the snapshot's own rev was older
+
+
+def test_checkpoint_includes_imported_meshes(proj, tmp_path):
+    f = tmp_path / "cube.stl"
+    trimesh.creation.box((10, 10, 10)).export(f)
+    proj.import_mesh("ref", f)
+    proj.save_checkpoint("with-mesh")
+    proj.delete_part("ref")
+    assert not proj.has("ref")
+    proj.restore_checkpoint("with-mesh")
+    assert proj.has("ref")
+    info = proj.build("ref")["info"]
+    assert info["ok"], info
+    assert abs(info["volume_mm3"] - 1000) < 1e-6
+
+
+def test_checkpoint_overwrite_same_name(proj):
+    proj.upsert_part("a", code=BOX)
+    proj.save_checkpoint("v1")
+    proj.upsert_part("a", code="result = Box(1, 1, 1)")
+    proj.save_checkpoint("v1")  # overwrite
+    assert len(proj.list_checkpoints()) == 1
+    proj.upsert_part("a", code=BOX)
+    proj.restore_checkpoint("v1")
+    assert proj.build("a")["info"]["size"] == [1.0, 1.0, 1.0]
+
+
+def test_checkpoint_delete(proj):
+    proj.upsert_part("a", code=BOX)
+    proj.save_checkpoint("v1")
+    proj.delete_checkpoint("v1")
+    assert proj.list_checkpoints() == []
+    with pytest.raises(P.PartError, match="does not exist"):
+        proj.delete_checkpoint("v1")
+
+
+def test_restore_unknown_checkpoint_raises(proj):
+    with pytest.raises(P.PartError, match="does not exist"):
+        proj.restore_checkpoint("nope")
+
+
+def test_checkpoint_empty_name_rejected(proj):
+    with pytest.raises(P.PartError, match="empty"):
+        proj.save_checkpoint("   ")
