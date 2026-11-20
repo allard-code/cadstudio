@@ -208,6 +208,27 @@ def put_common(body: dict = Body(...)):
     return proj.summary()  # shared code affects every part's build status
 
 
+@app.post("/api/presets")
+def save_preset(body: dict = Body(...)):
+    proj = _proj()
+    proj.save_preset(body["name"])
+    return proj.summary()
+
+
+@app.post("/api/presets/{name}/apply")
+def apply_preset(name: str):
+    proj = _proj()
+    proj.apply_preset(name)
+    return proj.summary()
+
+
+@app.delete("/api/presets/{name}")
+def delete_preset(name: str):
+    proj = _proj()
+    proj.delete_preset(name)
+    return proj.summary()
+
+
 @app.put("/api/parts/{name}")
 def put_part(name: str, body: dict = Body(...)):
     proj = _proj()

@@ -148,6 +148,10 @@ class Project:
     def parts(self) -> list[dict]:
         return self.data.setdefault("parts", [])
 
+    @property
+    def presets(self) -> dict:
+        return self.data.setdefault("presets", {})
+
     # ---- part CRUD
     def find(self, name: str) -> dict:
         for p in self.parts:
@@ -221,6 +225,30 @@ class Project:
                 for k, v in list(self.params.items()):
                     if v is None:
                         del self.params[k]
+            self.save()
+
+    def save_preset(self, name: str) -> dict:
+        """Save the current parameters under a name, so a different size/variant can be switched back to later."""
+        with LOCK:
+            if not name.strip():
+                raise PartError("Preset name can't be empty")
+            self.presets[name] = dict(self.params)
+            self.save()
+            return self.presets[name]
+
+    def apply_preset(self, name: str) -> dict:
+        with LOCK:
+            if name not in self.presets:
+                raise PartError(f"Preset '{name}' does not exist. Existing presets: {list(self.presets)}")
+            saved = self.presets[name]
+        self.set_params(saved, replace=True)
+        return self.params
+
+    def delete_preset(self, name: str) -> None:
+        with LOCK:
+            if name not in self.presets:
+                raise PartError(f"Preset '{name}' does not exist")
+            del self.presets[name]
             self.save()
 
     def import_mesh(self, name: str, src: str | Path, color: str | None = None, filament: int | None = None) -> dict:
@@ -447,7 +475,8 @@ class Project:
             q = {**PART_DEFAULTS, **p}
             parts.append({**q, "info": infos[p["name"]]["info"]})
         return {"name": self.name, "rev": self.rev, "params": self.params, "notes": self.data.get("notes", ""),
-                "common": self.data.get("common", ""), "parts": parts, "bed": BED, "dir": str(self.dir)}
+                "common": self.data.get("common", ""), "presets": self.data.get("presets", {}),
+                "parts": parts, "bed": BED, "dir": str(self.dir)}
 
 
 # --------------------------------------------------------------------------- geometry helpers

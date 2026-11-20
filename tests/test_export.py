@@ -32,6 +32,22 @@ def test_orca_3mf_has_extruder_per_part(proj):
     assert abs(scene.bounds[0][2]) < 1e-6
 
 
+def test_filament_weight_and_cost_estimate(proj):
+    proj.upsert_part("a", code="result = Box(10, 10, 10, align=(Align.CENTER, Align.CENTER, Align.MIN))",
+                      color="#FFFFFF", filament=1)  # 1000 mm^3 = 1 cm^3
+    res = export_3mf(proj, filament_density_g_cm3=1.24, filament_price_eur_kg=20)
+    assert abs(res["total_g_solid_estimate"] - 1.24) < 0.05
+    assert res["filament_g_solid_estimate"] == {"1": res["total_g_solid_estimate"]}
+    assert abs(res["cost_eur_solid_estimate"] - 1.24 / 1000 * 20) < 0.01  # cost is rounded to cents
+
+
+def test_filament_weight_without_price_omits_cost(proj):
+    proj.upsert_part("a", code="result = Box(10, 10, 10)")
+    res = export_3mf(proj)
+    assert "cost_eur_solid_estimate" not in res
+    assert res["total_g_solid_estimate"] > 0
+
+
 def test_prusa_3mf_volumes(proj):
     _two_colour(proj)
     res = export_3mf(proj, flavor="prusa")

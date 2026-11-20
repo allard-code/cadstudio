@@ -21,7 +21,7 @@ from xml.sax.saxutils import escape, quoteattr
 
 import numpy as np
 
-from .project import BED, PartError, Project, exportable_meshes, slugify
+from .project import BED, PartError, Project, exportable_meshes, mesh_volume, slugify
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -86,7 +86,8 @@ def _slot_warnings(items) -> list[str]:
 
 
 def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assembly", flavor: str = "orca",
-               only: list[str] | None = None, object_name: str | None = None, thumbnail: bytes | None = None) -> dict:
+               only: list[str] | None = None, object_name: str | None = None, thumbnail: bytes | None = None,
+               filament_density_g_cm3: float = 1.24, filament_price_eur_kg: float | None = None) -> dict:
     items = exportable_meshes(proj, only)
     items, warnings = _place(items, center=True)
     path = Path(path) if path else proj.dir / "exports" / f"{proj.name}.3mf"
@@ -180,12 +181,23 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
             z.writestr("Metadata/thumbnail.png", thumbnail)
 
     fil = {}
-    for s, _, _ in items:
-        fil.setdefault(int(s["filament"]), []).append(f'{s["name"]} ({s["color"]})')
+    grams_per_slot: dict[int, float] = {}
+    for s, V, F in items:
+        slot = int(s["filament"])
+        fil.setdefault(slot, []).append(f'{s["name"]} ({s["color"]})')
+        grams_per_slot[slot] = grams_per_slot.get(slot, 0.0) + mesh_volume(V, F) / 1000 * filament_density_g_cm3
     warnings += _slot_warnings(items)
-    return {"path": str(path), "flavor": flavor, "mode": mode, "parts": [s["name"] for s, _, _ in items],
-            "filament_slots": {str(k): v for k, v in sorted(fil.items())}, "warnings": warnings,
-            "triangles": int(sum(len(F) for _, _, F in items))}
+    total_g = sum(grams_per_slot.values())
+    result = {"path": str(path), "flavor": flavor, "mode": mode, "parts": [s["name"] for s, _, _ in items],
+              "filament_slots": {str(k): v for k, v in sorted(fil.items())}, "warnings": warnings,
+              "triangles": int(sum(len(F) for _, _, F in items)),
+              # a rough estimate: solid-model volume x density, so it ignores infill/perimeters/supports and
+              # is an upper bound for anything printed below 100% infill (which is most prints)
+              "filament_g_solid_estimate": {str(k): round(v, 1) for k, v in sorted(grams_per_slot.items())},
+              "total_g_solid_estimate": round(total_g, 1)}
+    if filament_price_eur_kg is not None:
+        result["cost_eur_solid_estimate"] = round(total_g / 1000 * filament_price_eur_kg, 2)
+    return result
 
 
 def export_stl(proj: Project, path: str | Path | None = None, only: list[str] | None = None,

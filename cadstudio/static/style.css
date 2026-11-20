@@ -17,6 +17,9 @@ button.primary:hover{background:var(--accent2)}
 button.danger:hover{border-color:var(--danger);color:var(--danger)}
 button.on{border-color:var(--accent);color:var(--accent)}
 button.mini{padding:0 6px;font-size:12px;float:right}
+.presets{display:flex;gap:4px;margin-top:6px}
+.presets select{flex:1;min-width:0}
+.presets button{flex:none}
 select,input,textarea{background:#111317;border:1px solid var(--line);border-radius:6px;padding:4px 6px}
 input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
 .live{color:var(--muted);font-size:12px;white-space:nowrap}.live.ok{color:var(--ok)}

@@ -256,6 +256,9 @@ function renderParams() {
     box.appendChild(row);
   }
   if (!Object.keys(params).length) box.innerHTML = `<div class="muted">${t("params.empty")}</div>`;
+  const sel = $("#presetSelect"); const names = Object.keys(S.project.presets || {});
+  sel.innerHTML = `<option value="" data-i18n="presets.select"></option>` + names.map((n) => `<option value="${n}">${n}</option>`).join("");
+  applyI18n(sel);
 }
 async function setParam(k, v) {
   try { apply(await api("/api/params", { method: "PUT", body: JSON.stringify({ params: { [k]: v } }) })); }
@@ -265,6 +268,21 @@ $("#addParam").onclick = () => {
   const name = prompt(t("params.prompt.name")); if (!name) return;
   const val = prompt(t("params.prompt.value"), "2"); if (val === null) return;
   setParam(name.trim(), isNaN(+val) ? val : +val);
+};
+$("#presetSelect").onchange = async (e) => {
+  const name = e.target.value; if (!name) return;
+  try { apply(await api(`/api/presets/${encodeURIComponent(name)}/apply`, { method: "POST" })); }
+  catch (err) { toast(err.message, "err"); }
+};
+$("#presetSave").onclick = async () => {
+  const name = prompt(t("presets.save")); if (!name) return;
+  try { apply(await api("/api/presets", { method: "POST", body: JSON.stringify({ name: name.trim() }) })); }
+  catch (err) { toast(err.message, "err"); }
+};
+$("#presetDel").onclick = async () => {
+  const name = $("#presetSelect").value; if (!name) return;
+  try { apply(await api(`/api/presets/${encodeURIComponent(name)}`, { method: "DELETE" })); }
+  catch (err) { toast(err.message, "err"); }
 };
 
 // ------------------------------------------------------------------ UI: parts list

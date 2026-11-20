@@ -2,6 +2,7 @@
 import math
 
 import numpy as np
+import pytest
 import trimesh
 
 from cadstudio import project as P
@@ -112,6 +113,31 @@ def test_common_code_error_is_reported_not_raised(proj):
     info = proj.build("a")["info"]
     assert info["ok"] is False
     assert "SyntaxError" in info["error"]
+
+
+def test_presets_save_and_apply(proj):
+    proj.set_params({"w": 10, "h": 5})
+    proj.save_preset("small")
+    proj.set_params({"w": 40, "h": 20}, replace=True)
+    proj.save_preset("large")
+    assert proj.apply_preset("small") == {"w": 10, "h": 5}
+    assert proj.params == {"w": 10, "h": 5}
+    assert proj.apply_preset("large") == {"w": 40, "h": 20}
+    assert set(proj.summary()["presets"]) == {"small", "large"}
+
+
+def test_apply_unknown_preset_raises(proj):
+    with pytest.raises(P.PartError, match="does not exist"):
+        proj.apply_preset("nope")
+
+
+def test_delete_preset(proj):
+    proj.set_params({"w": 10})
+    proj.save_preset("small")
+    proj.delete_preset("small")
+    assert "small" not in proj.presets
+    with pytest.raises(P.PartError):
+        proj.delete_preset("small")
 
 
 def test_filament_auto_assignment(proj):

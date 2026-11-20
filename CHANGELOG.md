@@ -21,6 +21,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   (10 mm / 15° / 0.1×). Duplicate now offsets the copy so it doesn't land exactly on top of the original, and
   selects it. Undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`, also toolbar buttons) covers move/resize/rotate/colour/
   filament/visibility/export/code edits.
+- `export_3mf` now returns a rough filament-weight/cost estimate per filament slot (solid-model volume ×
+  density; configurable `filament_density_g_cm3`, optional `filament_price_eur_kg`). It's an upper bound, since
+  it assumes 100% infill.
+- Parameter presets: save the current `set_params` values under a name and switch back to them later (e.g. a
+  "Large"/"Small" variant of the same design) without retyping every number. A dropdown + save/delete buttons
+  next to Parameters in the editor; `save_param_preset`/`apply_param_preset`/`delete_param_preset` for Claude.
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.
