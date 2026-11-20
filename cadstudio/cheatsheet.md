@@ -90,6 +90,20 @@ inlay = Pos(0, 0, h/2) * extrude(label, amount=0.8)
   It runs once before each part's own code, in the same namespace, so its functions/variables are just
   available by name afterwards (no `part("...")` needed to reach them).
 
+## Combining an imported mesh with your own geometry
+`part("name")` only works between build123d parts (it needs an OCCT solid); an imported mesh (from
+`import_mesh`) has none, so `part()` raises if you try. Use `mesh_boolean(a, b, op)` instead:
+```python
+result = mesh_boolean("ref", Cylinder(3, 20), "subtract")   # "union" | "subtract" | "intersect"
+```
+* `a`/`b` can each be a part name (code part, imported mesh, or another `mesh_boolean()` part), a `(V, F)`
+  tuple from `mesh_of("name")`, or a build123d shape built inline (as in the example above).
+* Returns a `MeshResult` - assign it straight to `result`. It bypasses build123d entirely, so it can't be
+  combined further with `+ - &`, only with more `mesh_boolean()` calls. `scale`/`location` on that part still
+  work normally (applied to the resulting triangles).
+* It can't be exported to STEP (no BRep solid, same as a plain imported mesh) - 3MF/STL and the preview work fine.
+* Needs the meshes to be reasonably watertight; a badly broken import may fail with an error instead of a result.
+
 ## Printability (FDM, 0.4 nozzle)
 * Wall thickness ≥ 1.2 mm (3 lines), preferably 1.6–2.0.
 * Overhang ≤ 45°, otherwise supports, or a chamfer instead of a fillet at the bottom.

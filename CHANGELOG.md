@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Project-level shared code: a "Shared code" box in the editor (and `set_common_code` for Claude) runs once before
   every part's own code, in the same namespace. Put a helper function/constant used by several parts here once
   instead of repeating it in each part — cuts down on duplicated code in multi-colour designs.
+- `mesh_boolean(a, b, op)`: union/subtract/intersect at the mesh level (via manifold3d), for combining an imported
+  mesh with your own geometry — the regular `+ - &` operators need a BRep solid, which an imported mesh doesn't
+  have. `mesh_of(name)` returns a part's raw triangles. Closes the "imported meshes can't be used in booleans"
+  limitation, for 3MF/STL/preview (not STEP, which needs a BRep solid).
 
 ### Fixed
 - claude.ai custom connector: `/.well-known/oauth-*` now returns 404 instead of 401, so clients don't assume an OAuth sign-in is required.

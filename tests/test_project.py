@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import math
+
 import numpy as np
 import trimesh
 
@@ -133,6 +135,38 @@ def test_mesh_import_is_recentred(proj, tmp_path):
     info = proj.build("ref")["info"]
     assert info["ok"] and info["bbox_min"] == [-5.0, -5.0, 0.0]
     assert abs(info["volume_mm3"] - 1000) < 1e-6
+
+
+def test_mesh_boolean_subtract_with_imported_mesh(proj, tmp_path):
+    f = tmp_path / "cube.stl"
+    trimesh.creation.box((10, 10, 10)).export(f)
+    proj.import_mesh("ref", f)
+    proj.upsert_part("hole", code='result = mesh_boolean("ref", Cylinder(3, 20), "subtract")')
+    info = proj.build("hole")["info"]
+    assert info["ok"], info
+    assert info["size"] == [10.0, 10.0, 10.0]
+    assert info["watertight"] is True
+    assert abs(info["volume_mm3"] - (1000 - math.pi * 9 * 10)) < 5  # cylinder is tessellated, not exact
+
+
+def test_mesh_boolean_result_is_skipped_in_step_export(proj, tmp_path):
+    f = tmp_path / "cube.stl"
+    trimesh.creation.box((10, 10, 10)).export(f)
+    proj.import_mesh("ref", f)
+    proj.upsert_part("hole", code='result = mesh_boolean("ref", Cylinder(3, 20), "subtract")')
+    proj.build("hole")
+    assert proj.find("hole")  # sanity: part exists
+    assert proj.build("hole")["shape"] is None  # no BRep shape - consistent with plain imported meshes
+
+
+def test_mesh_boolean_bad_op_is_reported(proj, tmp_path):
+    f = tmp_path / "cube.stl"
+    trimesh.creation.box((10, 10, 10)).export(f)
+    proj.import_mesh("ref", f)
+    proj.upsert_part("hole", code='result = mesh_boolean("ref", Cylinder(3, 20), "xor")')
+    info = proj.build("hole")["info"]
+    assert info["ok"] is False
+    assert "op must be" in info["error"]
 
 
 def test_mesh_import_scale_is_applied(proj, tmp_path):

@@ -28,6 +28,7 @@ dependencies = [
   "trimesh>=4.0",
   "networkx>=3",   # trimesh: 3MF import
   "lxml>=5",       # trimesh: 3MF import
+  "manifold3d>=3", # trimesh.boolean engine: mesh_boolean() for parts that include an imported mesh
   "numpy",
   "pillow>=10",
 ]

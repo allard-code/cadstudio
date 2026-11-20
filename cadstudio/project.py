@@ -274,12 +274,16 @@ class Project:
                 else:
                     with contextlib.redirect_stdout(out):
                         shape = self._eval_code(spec, _stack + (name,))
-                    entry["shape"] = shape
-                    entry["mesh"] = tessellate(shape)
-                    try:
-                        entry["info"]["volume_mm3"] = round(float(shape.volume), 2)
-                    except Exception:
-                        pass
+                    if isinstance(shape, MeshResult):
+                        entry["mesh"] = weld(shape.V, shape.F)  # already final triangles, not an OCCT shape
+                        entry["info"]["volume_mm3"] = round(mesh_volume(*entry["mesh"]), 2)
+                    else:
+                        entry["shape"] = shape
+                        entry["mesh"] = tessellate(shape)
+                        try:
+                            entry["info"]["volume_mm3"] = round(float(shape.volume), 2)
+                        except Exception:
+                            pass
                 V, F = entry["mesh"]
                 if len(F) == 0:
                     raise PartError("Result contains no geometry (empty after a boolean?)")
@@ -323,6 +327,49 @@ class Project:
             return e["shape"]
 
         ns["part"] = part
+
+        def mesh_of(ref: str):
+            """Raw triangles (V, F) of any part - code, imported mesh, or a previous mesh_boolean() result.
+            Unlike part(), this works for imported meshes too, since it never needs an OCCT solid."""
+            e = self.build(ref, stack)
+            if not e["info"].get("ok"):
+                raise PartError(f"mesh_of('{ref}') failed: {e['info'].get('error')}")
+            return e["mesh"]
+
+        def mesh_boolean(a, b, op: str = "subtract"):
+            """Boolean of two meshes (union/subtract/intersect) when a BRep boolean (+ - &) can't be used because
+            one side is an imported mesh. a/b: a part name, a (V, F) tuple, or a MeshResult. Returns a MeshResult -
+            assign it to `result` directly (it bypasses build123d, so it can't be combined further with + - & on
+            a Shape, only with more mesh_boolean() calls). Needs the mesh to be reasonably watertight."""
+            import trimesh
+            import trimesh.boolean as _tb
+
+            def _as_mesh(x):
+                if isinstance(x, MeshResult):
+                    return x.V, x.F
+                if isinstance(x, tuple) and len(x) == 2:
+                    return x
+                if isinstance(x, str):
+                    return mesh_of(x)
+                if isinstance(x, bd.Shape):
+                    return tessellate(x)
+                raise PartError(f"mesh_boolean(): can't use a {type(x).__name__} as a mesh operand")
+
+            fn = {"union": _tb.union, "subtract": _tb.difference, "intersect": _tb.intersection}.get(op)
+            if fn is None:
+                raise PartError(f"mesh_boolean(): op must be 'union', 'subtract' or 'intersect', not {op!r}")
+            Va, Fa = _as_mesh(a)
+            Vb, Fb = _as_mesh(b)
+            ta = trimesh.Trimesh(vertices=Va, faces=Fa, process=False)
+            tb_ = trimesh.Trimesh(vertices=Vb, faces=Fb, process=False)
+            try:
+                r = fn([ta, tb_], engine="manifold")
+            except Exception as e:
+                raise PartError(f"mesh_boolean() failed (meshes may not be watertight): {e}") from e
+            return MeshResult(r.vertices, r.faces)
+
+        ns["mesh_of"] = mesh_of
+        ns["mesh_boolean"] = mesh_boolean
         common = self.data.get("common") or ""
         if common.strip():
             exec(compile(common, "<common>", "exec"), ns)
@@ -343,6 +390,18 @@ class Project:
             result = result.part
         if isinstance(result, (list, tuple)):
             result = bd.Compound(children=list(result))
+        if isinstance(result, MeshResult):
+            if len(result.F) == 0:
+                raise PartError("mesh_boolean() result contains no geometry (empty after the boolean?)")
+            sx, sy, sz = spec.get("scale") or [1, 1, 1]
+            if (sx, sy, sz) != (1, 1, 1):
+                c = (result.V.min(axis=0) + result.V.max(axis=0)) / 2
+                result.V = (result.V - c) * np.array([sx, sy, sz]) + c
+            x, y, z, rx, ry, rz = spec.get("location") or [0] * 6
+            if any((rx, ry, rz)):
+                result.V = result.V @ rot_matrix(rx, ry, rz).T
+            result.V = result.V + np.array([x, y, z])
+            return result
         if not isinstance(result, bd.Shape):
             raise PartError(f"`result` is a {type(result).__name__}, expected a build123d Part/Solid/Compound")
         if not result.solids():
@@ -418,6 +477,20 @@ def is_watertight(F) -> bool:
     e = np.sort(np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]), axis=1)
     _, counts = np.unique(e, axis=0, return_counts=True)
     return bool(len(counts) and np.all(counts == 2))
+
+
+class MeshResult:
+    """A `result` that is raw triangles (V, F) rather than a build123d BRep Shape - what mesh_boolean() returns.
+    Used when a part's geometry has to involve an imported mesh (no OCCT solid available for it), so the usual
+    BRep boolean operators (+ - &) don't apply. Scale/location are applied directly to V, same as mesh-type parts.
+    Downstream (render, 3MF/STL export, measure) only ever need entry["mesh"], so this needs no further support;
+    STEP export skips it, same as it already skips plain imported meshes (no BRep solid to export)."""
+
+    __slots__ = ("V", "F")
+
+    def __init__(self, V, F):
+        self.V = np.asarray(V, dtype=np.float64)
+        self.F = np.asarray(F, dtype=np.int64)
 
 
 def mesh_volume(V, F) -> float:
