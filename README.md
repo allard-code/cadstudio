@@ -113,6 +113,7 @@ Example prompts:
 |---|---|
 | Projects | `list_projects`, `new_project`, `open_project`, `get_project`, `set_notes` |
 | Modelling | `set_params`, `set_part`, `update_part`, `add_primitive`, `delete_part` |
+| Build plates | `add_plate`, `remove_plate`, `arrange_plates` (and `plate` on `set_part` / `update_part`) |
 | Inspecting | `measure`, `render_preview` |
 | Import | `list_inbox`, `import_mesh` (inbox file or URL) |
 | Export | `export_3mf`, `export_stl`, `export_step` (each with a download link) |
@@ -129,9 +130,18 @@ Example prompts:
   | **X** | X-ray view |
   | **E** | show edges |
   | **F** | fit to view |
+  | **1**–**9** / **0** | show bed 1–9 / all beds |
   | **Ctrl+Enter** | build the code |
 
 - The UI is in English and Dutch; switch with the EN/NL selector.
+
+### Build plates
+
+Parts that don't fit on one bed together (say the two halves of a spool) go on separate build plates. The bed bar
+under the 3D view switches between beds; *Arrange* spreads all printable parts over as many beds as needed. A
+part's position is relative to the centre of its own bed. *Export 3MF* puts every bed in one file as separate
+slicer plates (Orca flavour), or, with "1 file per bed", writes one 3MF per bed — use that for PrusaSlicer, which
+has no plates.
 
 ### Multi-colour
 

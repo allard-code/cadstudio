@@ -38,6 +38,11 @@
       <option value="assembly" data-i18n="export.mode.assembly"></option>
       <option value="objects" data-i18n="export.mode.objects"></option>
     </select>
+    <select id="exportPlates" class="hidden" data-i18n-title="export.plates.title">
+      <option value="all" data-i18n="export.plates.all"></option>
+      <option value="split" data-i18n="export.plates.split"></option>
+      <option value="current" data-i18n="export.plates.current"></option>
+    </select>
     <button id="export3mf" class="primary" data-i18n="export.3mf"></button>
     <button id="exportStl">STL</button>
     <button id="exportStep">STEP</button>
@@ -111,6 +116,12 @@
       <input id="clipSlider" type="range" min="0" max="1000" value="500">
       <button id="clipFlip" class="mini" data-i18n-title="view.clip.flip">⇄</button>
     </div>
+    <div id="platebar">
+      <div id="plateTabs"></div>
+      <button id="plateAdd" class="mini" data-i18n-title="plates.add">＋</button>
+      <button id="plateDel" class="mini" data-i18n-title="plates.remove">✕</button>
+      <button id="plateArrange" data-i18n="plates.arrange" data-i18n-title="plates.arrange.title"></button>
+    </div>
     <div id="dims"></div>
     <div id="toast"></div>
   </div>
@@ -135,6 +146,7 @@
     <div><label data-i18n="insp.filament"></label>
       <select id="pFilament"></select></div>
   </div>
+  <div class="row"><label data-i18n="insp.plate"></label><select id="pPlate"></select></div>
   <div class="row checks">
     <label><input type="checkbox" id="pVisible"> <span data-i18n="insp.visible"></span></label>
     <label><input type="checkbox" id="pExport"> <span data-i18n="insp.export"></span></label>

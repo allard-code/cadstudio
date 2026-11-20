@@ -31,6 +31,9 @@ You work through the `cad-studio` MCP tools on a server (usually a Docker contai
 
 - Walls ≥ 1.2 mm (preferably 1.6–2.0), a flat face at the bottom, overhangs ≤ 45° (chamfer instead of fillet at the bottom).
 - Clearance between separate parts 0.2–0.3 mm per side. Does it fit the bed? Use `measure`.
+- Parts that don't fit on one bed together (e.g. two 200 mm spool halves): give each its own build plate
+  (`set_part(..., plate=2)`) or call `arrange_plates()` — never park a part off the bed. `export_3mf` then writes
+  all plates into one file (`split_plates=True` for one file per plate).
 
 ## User files
 

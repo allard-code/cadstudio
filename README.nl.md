@@ -59,6 +59,10 @@ claude mcp add --transport http --scope user cad-studio http://192.168.1.50:8765
 Voorbeeldvraag: *"Maak een bakje van 80×50×30 mm met 2 mm wand, afgeronde hoeken en mijn naam in rood als inleg op de voorkant. Exporteer als 3MF."*
 
 - **Multi-color:** elke kleur is een eigen onderdeel met een filament-slot (1–4; 5–8 voor een tweede unit). Een inleg trek je af van het basisonderdeel (`result = body - part("label")`).
+- **Meerdere bedden:** past niet alles samen op één bed, zet onderdelen dan op een eigen printplaat. Met de
+  bedbalk onder de 3D-weergave wissel je tussen bedden (ook toetsen `1`–`9`, `0` = alle); *Verdeel* zet alle
+  printbare onderdelen automatisch over zoveel bedden als nodig. De 3MF-export zet elk bed als eigen plaat in één
+  bestand, of met "1 bestand per bed" in losse bestanden.
 - **Export "1 object (multi-color)":** elk deel krijgt een eigen extruder, op dezelfde manier als Bambu Studio en OrcaSlicer dat opslaan.
 - **Taal:** de editor is Engels- en Nederlandstalig; wissel met de EN/NL-keuze rechtsboven.
 

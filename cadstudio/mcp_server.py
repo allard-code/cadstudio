@@ -46,7 +46,11 @@ Workflow:
    put that once in set_common_code() instead of repeating it in every part's code.
 4. ALWAYS check visually with render_preview() and check bbox/size in the set_part response.
    Fix errors (the traceback is returned) before moving on.
-5. export_3mf() for the slicer. Give the user the download_url and tell them which filament slot needs which colour.
+5. Build plates: if the parts don't all fit on one 250x250 bed (e.g. two halves of a spool), put them on
+   separate plates - set_part(..., plate=2) or arrange_plates() to spread them automatically. Parts keep
+   their location relative to their own plate; the editor and export lay plates out side by side.
+6. export_3mf() for the slicer (all plates in one file; split_plates=True for one file per plate).
+   Give the user the download_url and tell them which filament slot needs which colour.
 User files (STL/3MF from MakerWorld etc.): list_inbox() + import_mesh(file_path), or import_mesh(url=...).
 The server may run on another machine (Docker): paths are server paths, not paths on the user's computer.
 Reply in the user's language. The user watches live in the web editor: {{web_url}}
@@ -66,6 +70,7 @@ def _part_report(proj: P.Project, name: str) -> dict:
     e = proj.build(name)
     spec = proj.find(name)
     return {"part": name, "color": spec["color"], "filament": spec["filament"], "visible": spec["visible"],
+            "plate": int(spec.get("plate", 1)),
             **{k: v for k, v in e["info"].items() if k != "name"}}
 
 
@@ -192,29 +197,32 @@ def delete_checkpoint(name: str) -> dict:
 
 @mcp.tool()
 def set_part(name: str, code: str, color: str | None = None, filament: int | None = None,
-             location: list[float] | None = None, scale: list[float] | None = None, note: str | None = None) -> dict:
+             location: list[float] | None = None, scale: list[float] | None = None, note: str | None = None,
+             plate: int | None = None) -> dict:
     """Create or replace a part from build123d code. The code must assign `result`.
     color: hex, e.g. "#D62828" (display + 3MF colour). filament: extruder / filament slot 1..8.
-    location: optional [x, y, z, rx, ry, rz] applied after the code.
+    location: optional [x, y, z, rx, ry, rz] applied after the code (relative to the part's plate centre).
+    plate: build plate number (default 1; a higher number adds plates as needed) - use a separate plate for
+    parts that don't fit on the bed together, instead of moving them off the bed.
     scale: optional [sx, sy, sz] (default [1,1,1]) stretch/shrink about the part's own centre, applied before location.
     The response contains ok/error (+traceback), bbox, size (mm), volume, triangle count and watertight."""
     proj = _proj()
     proj.upsert_part(name, type="code", code=code, color=color, filament=filament, location=location,
-                      scale=scale, note=note)
+                      scale=scale, note=note, plate=plate)
     return _part_report(proj, name)
 
 
 @mcp.tool()
 def update_part(name: str, color: str | None = None, filament: int | None = None, visible: bool | None = None,
                 export: bool | None = None, location: list[float] | None = None, scale: list[float] | None = None,
-                new_name: str | None = None) -> dict:
+                new_name: str | None = None, plate: int | None = None) -> dict:
     """Change part properties without replacing the code (colour, slot, visibility, include in export,
-    position/rotation [x,y,z,rx,ry,rz], scale [sx,sy,sz] about its own centre, rename – part("..") references
-    are updated)."""
+    position/rotation [x,y,z,rx,ry,rz], scale [sx,sy,sz] about its own centre, build plate number, rename –
+    part("..") references are updated)."""
     proj = _proj()
     proj.find(name)
     proj.upsert_part(name, color=color, filament=filament, visible=visible, export=export, location=location,
-                      scale=scale)
+                      scale=scale, plate=plate)
     if new_name and new_name != name:
         proj.rename_part(name, new_name)
         name = new_name
@@ -284,6 +292,31 @@ def delete_part(name: str) -> dict:
 
 
 @mcp.tool()
+def add_plate() -> dict:
+    """Add an empty build plate (bed). Put parts on it with update_part(name, plate=N)."""
+    proj = _proj()
+    n = proj.add_plate()
+    return {"plates": n}
+
+
+@mcp.tool()
+def remove_plate(plate: int) -> dict:
+    """Remove build plate N; its parts move to the previous plate and later plates are renumbered."""
+    proj = _proj()
+    n = proj.remove_plate(plate)
+    return {"plates": n, "parts": {p["name"]: int(p.get("plate", 1)) for p in proj.parts}}
+
+
+@mcp.tool()
+def arrange_plates(names: list[str] | None = None, margin: float = 5.0) -> dict:
+    """Spread the printable parts over as many build plates as needed (plates are added automatically),
+    packed in rows with `margin` mm between them. Parts whose footprints overlap (a multi-colour assembly)
+    move together; groups linked by part("..") references keep their position and get a plate of their own.
+    names: only these parts (default: all visible, exported parts). Returns which parts are on which plate."""
+    return _proj().arrange_plates(names, margin=margin)
+
+
+@mcp.tool()
 def list_inbox() -> dict:
     """Files in the server's inbox folder (where the user drops STL/3MF/OBJ files, e.g. via the editor upload,
     a network share or a file manager). Use the name in import_mesh(file_path=...)."""
@@ -340,7 +373,7 @@ def import_mesh(name: str, file_path: str | None = None, url: str | None = None,
 @mcp.tool()
 def measure(names: list[str] | None = None) -> dict:
     """Bounding boxes, sizes and volumes of parts (all parts if names is empty), plus the overall
-    bounding box and whether it fits on the bed (250x250x250)."""
+    bounding box and whether it fits on the bed (250x250x250) - per build plate when there are several."""
     proj = _proj()
     names = names or [p["name"] for p in proj.parts]
     reps = [_part_report(proj, n) for n in names]
@@ -352,6 +385,15 @@ def measure(names: list[str] | None = None) -> dict:
         size = [round(hi[i] - lo[i], 3) for i in range(3)]
         total = {"bbox_min": lo, "bbox_max": hi, "size": size,
                  "fits_bed": all(size[i] <= P.BED[i] for i in range(3))}
+        if proj.plate_count > 1:
+            per = {}
+            for k in sorted({r["plate"] for r in ok}):
+                on = [r for r in ok if r["plate"] == k]
+                sz = [round(max(r["bbox_max"][i] for r in on) - min(r["bbox_min"][i] for r in on), 3) for i in range(3)]
+                per[str(k)] = {"parts": [r["part"] for r in on], "size": sz,
+                               "fits_bed": all(sz[i] <= P.BED[i] for i in range(3))}
+            total["plates"] = per
+            total["fits_bed"] = all(v["fits_bed"] for v in per.values())
     return {"parts": reps, "total": total}
 
 
@@ -391,13 +433,15 @@ def check_wall_thickness(names: list[str] | None = None, threshold_mm: float = 1
 
 @mcp.tool()
 def render_preview(view: str = "grid", parts: list[str] | None = None, overhangs: bool = False,
-                   overhang_angle: float = 45.0) -> Image:
+                   overhang_angle: float = 45.0, plate: int | None = None) -> Image:
     """Render an image of the model so you can check the result.
     view: grid (iso/front/top/right) | iso | front | back | left | right | top | bottom | iso_back.
     parts: only show these parts (default: all visible parts).
     overhangs: tint faces that need support orange (downward-facing steeper than overhang_angle degrees
-    from vertical; printers can typically self-support up to ~45 deg without support material)."""
-    png, errors = render_png(_proj(), view=view, parts=parts, overhangs=overhangs, overhang_angle=overhang_angle)
+    from vertical; printers can typically self-support up to ~45 deg without support material).
+    plate: only that build plate (default: all plates side by side)."""
+    png, errors = render_png(_proj(), view=view, parts=parts, overhangs=overhangs, overhang_angle=overhang_angle,
+                             plate=plate)
     if errors:
         print("render errors: " + "; ".join(errors), file=sys.stderr)
     return Image(data=png, format="png")
@@ -408,8 +452,12 @@ def render_preview(view: str = "grid", parts: list[str] | None = None, overhangs
 @mcp.tool()
 def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str = "orca",
                parts: list[str] | None = None, filament_density_g_cm3: float = 1.24,
-               filament_price_eur_kg: float | None = None, print_rate_cm3_per_hour: float | None = 15.0) -> dict:
+               filament_price_eur_kg: float | None = None, print_rate_cm3_per_hour: float | None = 15.0,
+               plate: int | None = None, split_plates: bool = False) -> dict:
     """Export to 3MF.
+    Build plates: by default every plate goes into one file (orca flavour: real slicer plates, each plate's
+    parts centred on it). plate=N exports only that plate; split_plates=True writes one file per plate
+    (response: paths + download_urls).
     mode: "assembly" = all parts as one object with one extruder/filament slot per part (multi-colour print);
           "objects"  = every part a separate object.
     flavor: "orca" (Anycubic Slicer Next, OrcaSlicer, Bambu Studio) or "prusa" (PrusaSlicer).
@@ -425,8 +473,11 @@ def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str 
     proj = _proj()
     res = _export_3mf(proj, filename, mode=mode, flavor=flavor, only=parts, thumbnail=thumbnail(proj),
                        filament_density_g_cm3=filament_density_g_cm3, filament_price_eur_kg=filament_price_eur_kg,
-                       print_rate_cm3_per_hour=print_rate_cm3_per_hour)
-    res["download_url"] = links.download_url(res["path"])
+                       print_rate_cm3_per_hour=print_rate_cm3_per_hour, plate=plate, split_plates=split_plates)
+    if "paths" in res:
+        res["download_urls"] = [links.download_url(p) for p in res["paths"]]
+    else:
+        res["download_url"] = links.download_url(res["path"])
     return res
 
 

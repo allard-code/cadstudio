@@ -11,6 +11,11 @@ Both also write core-spec <basematerials> colours so generic viewers (Windows 3D
 
 mode="assembly" puts all parts in one object (multi-colour print);
 mode="objects"  writes each part as its own object (several separate prints on one plate).
+
+Build plates: every part has a plate number. In the orca flavour all plates go into one file - objects are
+placed in the slicer's plate grid (same layout rule as Orca/Bambu) and Metadata/model_settings.config gets a
+<plate> block per plate listing its objects. split_plates=True writes one 3MF per plate instead (each
+centred on plate 1), which every slicer understands.
 """
 from __future__ import annotations
 
@@ -21,7 +26,7 @@ from xml.sax.saxutils import escape, quoteattr
 
 import numpy as np
 
-from .project import BED, PartError, Project, exportable_meshes, mesh_volume, slugify
+from .project import BED, PartError, Project, exportable_meshes, mesh_volume, plate_origin, slugify
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -58,8 +63,9 @@ def _color(c: str) -> str:
     return (c.upper() + "FF") if len(c) == 7 else c.upper()
 
 
-def _place(items, center: bool):
-    """Translate all meshes together so the group sits on the bed (z=0) and is centred on the plate."""
+def _place(items, center: bool, offset: tuple[float, float] = (0.0, 0.0), label: str = "Model"):
+    """Translate all meshes together so the group sits on the bed (z=0) and is centred on the plate,
+    then shift by `offset` (the plate's position in the slicer's plate grid)."""
     allv = np.vstack([V for _, V, _ in items])
     lo, hi = allv.min(axis=0), allv.max(axis=0)
     size = hi - lo
@@ -67,10 +73,28 @@ def _place(items, center: bool):
         shift = np.array([BED[0] / 2 - (lo[0] + hi[0]) / 2, BED[1] / 2 - (lo[1] + hi[1]) / 2, -lo[2]])
     else:
         shift = np.array([0.0, 0.0, -lo[2]])
+    shift = shift + np.array([offset[0], offset[1], 0.0])
     warn = []
     if size[0] > BED[0] or size[1] > BED[1] or size[2] > BED[2]:
-        warn.append(f"Model ({size[0]:.1f} x {size[1]:.1f} x {size[2]:.1f} mm) is larger than the bed {BED}")
+        warn.append(f"{label} ({size[0]:.1f} x {size[1]:.1f} x {size[2]:.1f} mm) is larger than the bed {BED}"
+                    f" - spread the parts over more plates (arrange_plates)")
     return [(s, V + shift, F) for s, V, F in items], warn
+
+
+def _place_plates(items, count: int):
+    """Centre each plate's parts on its own plate and move it to that plate's spot in the plate grid.
+    Returns (placed items in input order, warnings, sorted list of plate numbers in use)."""
+    by_plate: dict[int, list] = {}
+    for it in items:
+        by_plate.setdefault(int(it[0]["plate"]), []).append(it)
+    placed, warnings = {}, []
+    for k, grp in by_plate.items():
+        pts, w = _place(grp, center=True, offset=plate_origin(k, count),
+                        label=f"Plate {k}" if count > 1 else "Model")
+        warnings += w
+        for (s, V, F) in pts:
+            placed[s["name"]] = (s, V, F)
+    return [placed[s["name"]] for s, _, _ in items], warnings, sorted(by_plate)
 
 
 def _slot_warnings(items) -> list[str]:
@@ -88,12 +112,38 @@ def _slot_warnings(items) -> list[str]:
 def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assembly", flavor: str = "orca",
                only: list[str] | None = None, object_name: str | None = None, thumbnail: bytes | None = None,
                filament_density_g_cm3: float = 1.24, filament_price_eur_kg: float | None = None,
-               print_rate_cm3_per_hour: float | None = 15.0) -> dict:
-    items = exportable_meshes(proj, only)
-    items, warnings = _place(items, center=True)
+               print_rate_cm3_per_hour: float | None = 15.0, plate: int | None = None,
+               split_plates: bool = False) -> dict:
+    """plate: export only that plate (centred on a single bed). split_plates: one file per plate."""
     path = Path(path) if path else proj.dir / "exports" / f"{proj.name}.3mf"
     if path.suffix.lower() != ".3mf":
         path = path.with_suffix(".3mf")
+    if split_plates and plate is None:
+        used = sorted({int(s["plate"]) for s, _, _ in exportable_meshes(proj, only)})
+        results = []
+        for k in used:
+            sub = path.with_name(f"{path.stem}-plate{k}.3mf") if len(used) > 1 else path
+            results.append(export_3mf(proj, sub, mode=mode, flavor=flavor, only=only, object_name=object_name,
+                                      thumbnail=thumbnail, filament_density_g_cm3=filament_density_g_cm3,
+                                      filament_price_eur_kg=filament_price_eur_kg,
+                                      print_rate_cm3_per_hour=print_rate_cm3_per_hour, plate=k))
+        out = {"paths": [r["path"] for r in results], "flavor": flavor, "mode": mode,
+               "plates": {str(k): r for k, r in zip(used, results)},
+               "warnings": [w for r in results for w in r["warnings"]],
+               "total_g_solid_estimate": round(sum(r["total_g_solid_estimate"] for r in results), 1)}
+        if print_rate_cm3_per_hour:
+            out["print_time_hours_estimate"] = round(sum(r["print_time_hours_estimate"] for r in results), 2)
+        return out
+    items = exportable_meshes(proj, only, plate=plate)
+    count = 1 if plate is not None else proj.plate_count
+    if plate is not None:
+        items, warnings = _place(items, center=True, label=f"Plate {plate}")
+        plates_used = [plate]
+    else:
+        items, warnings, plates_used = _place_plates(items, count)
+    if flavor == "prusa" and len(plates_used) > 1:
+        warnings.append("PrusaSlicer has no build plates: all plates are laid out side by side on one bed. "
+                        "Use split_plates (one file per plate) instead.")
     path.parent.mkdir(parents=True, exist_ok=True)
     object_name = object_name or proj.name
 
@@ -150,9 +200,16 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
                            f'{_mesh_xml(V, F)}\n  </object>')
             part_ids.append((oid, s))
             oid += 1
-        groups = [part_ids] if mode == "assembly" else [[p] for p in part_ids]
+        if mode == "assembly":  # one multi-colour object per plate
+            groups = [[p for p in part_ids if int(p[1]["plate"]) == k] for k in plates_used]
+        else:
+            groups = [[p] for p in part_ids]
+        plate_members: dict[int, list[int]] = {}
         for grp in groups:
             name = object_name if mode == "assembly" else grp[0][1]["name"]
+            if mode == "assembly" and len(plates_used) > 1:
+                name = f"{object_name} - plate {int(grp[0][1]['plate'])}"
+            plate_members.setdefault(int(grp[0][1]["plate"]) if plate is None else 1, []).append(oid)
             comps = "\n".join(f'    <component objectid="{pid}" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>' for pid, _ in grp)
             objects.append(f'  <object id="{oid}" type="model" name={quoteattr(name)}>\n'
                            f'   <components>\n{comps}\n   </components>\n  </object>')
@@ -167,6 +224,16 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
                        f'  <metadata key="name" value={quoteattr(name)}/>\n'
                        f'  <metadata key="extruder" value="{int(grp[0][1]["filament"])}"/>\n{parts_cfg}\n </object>')
             oid += 1
+        for k in range(1, count + 1):  # plate membership (Orca/Bambu); empty plates are kept as empty plates
+            insts = "\n".join(
+                f'  <model_instance>\n'
+                f'   <metadata key="object_id" value="{o}"/>\n'
+                f'   <metadata key="instance_id" value="0"/>\n'
+                f'   <metadata key="identify_id" value="{o}"/>\n'
+                f'  </model_instance>' for o in plate_members.get(k, []))
+            cfg.append(f' <plate>\n  <metadata key="plater_id" value="{k}"/>\n'
+                       f'  <metadata key="plater_name" value=""/>\n  <metadata key="locked" value="false"/>\n'
+                       + (insts + "\n" if insts else "") + " </plate>")
         cfg_name = "Metadata/model_settings.config"
         cfg_xml = '<?xml version="1.0" encoding="UTF-8"?>\n<config>\n' + "\n".join(cfg) + "\n</config>\n"
 
@@ -190,6 +257,8 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
     warnings += _slot_warnings(items)
     total_g = sum(grams_per_slot.values())
     result = {"path": str(path), "flavor": flavor, "mode": mode, "parts": [s["name"] for s, _, _ in items],
+              "plates": {str(k): [s["name"] for s, _, _ in items if plate is not None or int(s["plate"]) == k]
+                         for k in plates_used},
               "filament_slots": {str(k): v for k, v in sorted(fil.items())}, "warnings": warnings,
               "triangles": int(sum(len(F) for _, _, F in items)),
               # a rough estimate: solid-model volume x density, so it ignores infill/perimeters/supports and
@@ -213,7 +282,15 @@ def export_stl(proj: Project, path: str | Path | None = None, only: list[str] | 
     import trimesh
 
     items = exportable_meshes(proj, only)
-    items, warnings = _place(items, center=False)
+    by_plate: dict[int, list] = {}
+    for it in items:
+        by_plate.setdefault(int(it[0]["plate"]), []).append(it)
+    placed, warnings = {}, []
+    for k, grp in by_plate.items():  # every plate on its own bed (z=0); they would overlap if merged
+        pts, w = _place(grp, center=False, label=f"Plate {k}" if len(by_plate) > 1 else "Model")
+        warnings += w
+        placed.update({s["name"]: (s, V, F) for s, V, F in pts})
+    items = [placed[s["name"]] for s, _, _ in items]
     base = Path(path) if path else proj.dir / "exports"
     files = []
     if separate:
