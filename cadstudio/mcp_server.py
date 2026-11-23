@@ -29,6 +29,7 @@ from . import project as P
 from .export3mf import export_3mf as _export_3mf
 from .export3mf import export_step as _export_step
 from .export3mf import export_stl as _export_stl
+from .printcheck import find_floating
 from .render import render_png, thin_wall_mask, thumbnail
 
 CHEATSHEET = (Path(__file__).parent / "cheatsheet.md").read_text(encoding="utf-8")
@@ -45,7 +46,9 @@ Workflow:
    If several parts share helper functions/constants/geometry (e.g. one profile reused by 4 colour parts),
    put that once in set_common_code() instead of repeating it in every part's code.
 4. ALWAYS check visually with render_preview() and check bbox/size in the set_part response.
-   Fix errors (the traceback is returned) before moving on.
+   Fix errors (the traceback is returned) before moving on. Before exporting, run check_floating() (parts
+   that would print in mid-air - the slicer's "floating regions" warning) and check_wall_thickness(), and fix
+   what they report.
 5. Build plates: if the parts don't all fit on one 250x250 bed (e.g. two halves of a spool), put them on
    separate plates - set_part(..., plate=2) or arrange_plates() to spread them automatically. Parts keep
    their location relative to their own plate; the editor and export lay plates out side by side.
@@ -429,6 +432,42 @@ def check_wall_thickness(names: list[str] | None = None, threshold_mm: float = 1
         reports.append({"part": n, "ok": True, "min_thickness_mm": round(float(finite.min()), 3),
                         "thin_faces": int(thin.sum()), "total_faces": len(F), "worst_point": point})
     return {"threshold_mm": threshold_mm, "parts": reports}
+
+
+@mcp.tool()
+def check_floating(plate: int | None = None, layer_height_mm: float = 0.2, pitch_mm: float = 0.2,
+                   min_area_mm2: float = 0.1) -> dict:
+    """Find "floating regions": areas that would be printed in mid-air because nothing is below them in the
+    previous layer - the slicer's "floating regions" warning. Typical causes: a feature that starts inside a
+    hollow body (a chimney cylinder poking below a ceiling), a sphere/cone tip hanging into a cavity, or a part
+    that doesn't touch the bed. Overhangs and bridges that are attached to already printed material are NOT
+    reported (use render_preview(overhangs=True) for those). Run this after designing, before export_3mf.
+    Slices every exported part like a slicer (layer_height_mm, rasterised at pitch_mm), per build plate; parts on
+    the same plate support each other (inlays/multi-colour are fine). plate: only that plate (default: all).
+    Returns per plate a list of islands {part, z_mm, area_mm2, center [x, y], bbox} (plate coordinates),
+    lowest first; an empty list means the plate prints without floating regions."""
+    proj = _proj()
+    by_plate: dict[int, list] = {}
+    skipped = []
+    for p in proj.parts:
+        s = {**P.PART_DEFAULTS, **p}
+        if not s["export"] or (plate is not None and int(s["plate"]) != int(plate)):
+            continue
+        e = proj.build(s["name"])
+        if not e["info"].get("ok") or not e.get("mesh"):
+            skipped.append({"part": s["name"], "error": e["info"].get("error", "no mesh")})
+            continue
+        V, F = e["mesh"]
+        by_plate.setdefault(int(s["plate"]), []).append((s["name"], V, F))
+    plates = {}
+    for k in sorted(by_plate):
+        islands = find_floating(by_plate[k], layer_height=layer_height_mm, pitch=pitch_mm, min_area_mm2=min_area_mm2)
+        plates[str(k)] = {"parts": [n for n, _, _ in by_plate[k]], "floating": islands, "ok": not islands}
+    res: dict[str, Any] = {"layer_height_mm": layer_height_mm, "plates": plates,
+                           "ok": all(v["ok"] for v in plates.values())}
+    if skipped:
+        res["skipped"] = skipped
+    return res
 
 
 @mcp.tool()
