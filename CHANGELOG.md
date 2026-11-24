@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [0.4.0] - 2026-11-24
 
+### Changed
+- Releases are automatic: when `main` gets a new version in `pyproject.toml`, the Docker workflow publishes the
+  `:<version>` and `:<major>.<minor>` images and creates the `v<version>` tag and GitHub release (no manual tag push).
+
 ### Fixed
 - Slicing failed with "orca-slicer-env: Permission denied" when the server runs as a non-root user (PUID): the
   unpacked OrcaSlicer AppImage has owner-only directories (`/opt/orca/libexec` is `drwx------`). The image now
