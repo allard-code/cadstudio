@@ -1,0 +1,27 @@
+# TEMPORARY: probe OrcaSlicer release assets and runtime deps (removed before merge)
+name: orca-probe
+on:
+  push:
+    branches: [feat/slicer]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Releases with Linux assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/SoftFever/OrcaSlicer/releases?per_page=8" --jq '.[] | "\(.tag_name) \(.prerelease) \(.published_at)\n" + ([.assets[] | select(.name|test("Linux|linux|AppImage")) | "   \(.name) \(.size) \(.browser_download_url)"] | join("\n"))'
+      - name: Latest stable Ubuntu 24.04 AppImage, profiles and deps
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh api repos/SoftFever/OrcaSlicer/releases/latest --jq '[.assets[] | select(.name|test("AppImage")) | select(.name|test("2404"))][0].browser_download_url')
+          echo "URL=$url"
+          curl -fsSL -o orca.AppImage "$url"
+          chmod +x orca.AppImage && ./orca.AppImage --appimage-extract >/dev/null
+          ls squashfs-root | head -30
+          cat squashfs-root/AppRun | head -40
+          ls squashfs-root/resources/profiles/Anycubic/machine | grep -i s1 || echo "NO S1 PROFILE"
+          find squashfs-root -maxdepth 2 -name "*orca*" -type f | head
+          docker run --rm -v "$PWD/squashfs-root:/opt/orca" python:3.13-slim bash -c 'ls /opt/orca/bin; for b in /opt/orca/bin/*; do ldd "$b" 2>/dev/null | grep "not found" | sort -u; done; echo LIBDIR; ls /opt/orca/lib 2>/dev/null | head -50' 
