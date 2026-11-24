@@ -94,3 +94,69 @@ def test_export_filament_map_renumbers_slots(proj):
     with zipfile.ZipFile(res["path"]) as z:
         cfg = ET.fromstring(z.read("Metadata/model_settings.config"))
     assert {p.find("metadata[@key='extruder']").get("value") for p in cfg.iter("part")} == {"1"}
+
+
+ORCA_FOOTER = """G1 X10 Y10
+; filament used [mm] = 4914.78
+; filament used [cm3] = 11.82
+; filament used [g] = 14.70
+; total filament used [g] = 14.70
+; CONFIG_BLOCK_START
+; filament_type = PLA
+; CONFIG_BLOCK_END
+"""
+
+
+def _anycubic_parse(text):
+    """The parser of anycubic-cloud-api (gcode_file.AnycubicGcodeFile), reduced to what matters here."""
+    import re as _re
+    rex = _re.compile(r'; ([a-zA-Z0-9_\[\] ]+) = (.*)$')
+    data, found = {}, False
+    for line in text.split("\n"):
+        if not found and line.startswith("; filament used"):
+            found = True
+        if not found:
+            continue
+        m = rex.findall(line)
+        if not m:
+            continue
+        key, value = m[0]
+        for r in [" ", "[", "]", "(", ")", "__"]:
+            key = key.replace(r, "_")
+        key = key.rstrip("_")
+        try:
+            value = json.loads(value)
+        except ValueError:
+            value = [v.strip() for v in value.split(",")] if "," in value else value
+        data[key] = value
+    return data
+
+
+def test_anycubic_print_info_single_filament(tmp_path):
+    g = tmp_path / "x.gcode"
+    g.write_text(ORCA_FOOTER)
+    assert slicer.add_anycubic_print_info(g)
+    d = _anycubic_parse(g.read_text())
+    assert d["paint_info"] == [{"paint_index": 0, "material_type": "PLA"}]
+    assert d["filament_used_g"] == [14.7] and d["filament_used_mm"] == [4914.78] and d["filament_used_cm3"] == [11.82]
+    # the material list the integration builds: filament_used_g[paint_index]
+    assert d["filament_used_g"][d["paint_info"][0]["paint_index"]] == 14.7
+    before = g.read_text()
+    assert slicer.add_anycubic_print_info(g) and g.read_text() == before      # idempotent
+    assert before.startswith(ORCA_FOOTER)                                     # original G-code untouched
+
+
+def test_anycubic_print_info_two_filaments(tmp_path):
+    g = tmp_path / "x.gcode"
+    g.write_text(ORCA_FOOTER.replace("= 14.70\n; total", "= 14.70, 3.20\n; total")
+                 .replace("filament_type = PLA", "filament_type = PLA;PETG"))
+    assert slicer.add_anycubic_print_info(g)
+    d = _anycubic_parse(g.read_text())
+    assert d["paint_info"] == [{"paint_index": 0, "material_type": "PLA"}, {"paint_index": 1, "material_type": "PETG"}]
+    assert d["filament_used_g"] == [14.7, 3.2]
+
+
+def test_anycubic_print_info_without_stats(tmp_path):
+    g = tmp_path / "x.gcode"
+    g.write_text("G1 X0\n")
+    assert not slicer.add_anycubic_print_info(g)

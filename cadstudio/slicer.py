@@ -233,9 +233,65 @@ def slice_3mf(model_3mf: Path, out_dir: Path, printer: str = DEFAULT_PRINTER, pr
             raise SlicerError(f"OrcaSlicer failed (exit {proc_run.returncode}) {msg}\n{log[-3000:]}".strip())
         dest = out_dir / f"{model_3mf.stem}.gcode"
         shutil.move(str(gcodes[0]), dest)
+        if vendor.lower() == "anycubic":
+            add_anycubic_print_info(dest)
         stats = _parse_gcode_stats(dest)
         return {"gcode": str(dest), "stats": stats, "printer": printer, "process": process,
                 "filaments": [filament_preset(m, printer, vendor) for m in filaments], "log": log[-1500:]}
+
+
+def _footer_values(text: str, key: str) -> list[str] | None:
+    m = re.search(r"^;\s*" + re.escape(key) + r"\s*=\s*(.+)$", text, re.M)
+    if not m:
+        return None
+    return [v.strip() for v in re.split(r"[,;]", m.group(1)) if v.strip()]
+
+
+def add_anycubic_print_info(gcode: Path) -> bool:
+    """Append the per-filament metadata Anycubic Slicer Next writes, so the Anycubic cloud / ACE tooling
+    (e.g. the Home Assistant anycubic_cloud integration) can map filaments to ACE slots.
+
+    That tooling reads every '; key = value' comment after the first '; filament used' line and needs
+    `paint_info` (a JSON list with paint_index + material_type per filament) and the 'filament used'
+    values as lists - OrcaSlicer writes a single filament as a bare number. The lines are appended as
+    comments at the very end, so the printer's own G-code is untouched. Returns False if the G-code has no
+    'filament used [g]' statistics (nothing to describe)."""
+    with open(gcode, "rb") as fh:
+        fh.seek(0, 2)
+        fh.seek(max(0, fh.tell() - 400_000))
+        tail = fh.read().decode("utf-8", "replace")
+    if re.search(r"^;\s*paint_info\s*=", tail, re.M):
+        return True
+    grams = _footer_values(tail, "filament used [g]")
+    if not grams:
+        return False
+    types = _footer_values(tail, "filament_type") or []
+    lines = ["", "; CAD-Studio: filament metadata for Anycubic cloud / ACE (Slicer Next format)"]
+    for key in ("filament used [mm]", "filament used [cm3]", "filament used [g]"):
+        vals = _footer_values(tail, key)
+        if vals:
+            nums = []
+            for v in vals:
+                try:
+                    nums.append(float(v))
+                except ValueError:
+                    nums.append(0.0)
+            lines.append(f"; {key} = {json.dumps(nums)}")
+    paint = [{"paint_index": i, "material_type": (types[i] if i < len(types) else (types[0] if types else "PLA"))}
+             for i, g in enumerate(grams) if _as_float(g) > 0]
+    if not paint:
+        paint = [{"paint_index": 0, "material_type": types[0] if types else "PLA"}]
+    lines.append(f"; paint_info = {json.dumps(paint)}")
+    with open(gcode, "a", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(lines) + "\n")
+    return True
+
+
+def _as_float(v: str) -> float:
+    try:
+        return float(v)
+    except ValueError:
+        return 0.0
 
 
 _CUBE_MODEL = """<?xml version="1.0" encoding="UTF-8"?>
