@@ -31,3 +31,7 @@ docker compose up -d --build                  # container
 - Never write to stdout in stdio mode (it corrupts JSON-RPC); `mcp_server.main()` redirects fd 1.
 - Docker versions are pinned in `requirements-docker.txt`; test locally when bumping.
 - Record user-visible changes in `CHANGELOG.md` under "Unreleased"; releases are SemVer git tags (`v0.4.0`).
+- **Every change merged to `main` is a release:** bump the version in `pyproject.toml` and `cadstudio/__init__.py`
+  (patch = fixes only, minor = new features/tools, major = breaking), move "Unreleased" to `## [x.y.z] - date`
+  in `CHANGELOG.md` in the same PR, and after merging push the tag `vx.y.z` (builds the versioned image + GitHub
+  release).
