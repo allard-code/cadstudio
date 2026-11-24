@@ -11,6 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Resizing a part in the editor (scale) was silently dropped by the REST API.
 
 ### Added
+- `slice_plate()`: slices a build plate to G-code with OrcaSlicer, which is now bundled in the Docker image
+  (v2.5.2, command line only). Printer, process and filament settings come from OrcaSlicer's own system profiles
+  (default printer: `CADSTUDIO_PRINTER`, "Anycubic Kobra S1 0.4 nozzle"), with overrides for layer height,
+  infill, walls, top/bottom layers, supports and brim. `materials` picks a filament preset per slot ("PLA",
+  "PETG", ...), `one_filament=True` prints the whole plate from one spool. Returns a download link plus the
+  slicer's own print-time and filament estimates. The image grows by about 1 GB (OrcaSlicer and the GTK/WebKit
+  libraries it links against).
+- `export_3mf` (Python API): `filament_map` renumbers filament slots in the exported file.
 - `check_floating()`: slices the exported parts of each build plate into layers (like a slicer) and reports
   "floating regions" - areas that would print in mid-air because nothing is below them, e.g. a chimney cylinder
   that starts inside a hollow body or a sphere tip hanging into a cavity. Attached overhangs and bridges are not

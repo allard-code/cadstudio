@@ -54,4 +54,7 @@ jobs:
           curl -fs http://127.0.0.1:8765/health
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/api/project)" = "401"
           curl -fs -H "Authorization: Bearer ci" http://127.0.0.1:8765/api/project | grep -q '"tray"'
+          # OrcaSlicer CLI inside the image: slice a cube with the default printer profile
+          docker exec cs python -m cadstudio.slicer | tee slice.json
+          grep -q '"filament_g"' slice.json
           docker logs cs
