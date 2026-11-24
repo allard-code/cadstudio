@@ -49,7 +49,7 @@ jobs:
             type=raw,value=${{ steps.ver.outputs.minor }},enable=${{ steps.ver.outputs.new == 'true' }}
       - id: build_date
         run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           push: true
