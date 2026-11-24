@@ -56,6 +56,7 @@ Workflow:
    Give the user the download_url and tell them which filament slot needs which colour.
    Or slice_plate(plate=N) for ready-to-print G-code from the bundled OrcaSlicer (printer profile from
    CADSTUDIO_PRINTER); one_filament=True prints the whole plate from a single spool.
+   send_to_printer(plate=N) then hands that G-code to Home Assistant, which starts the print (if configured).
 User files (STL/3MF from MakerWorld etc.): list_inbox() + import_mesh(file_path), or import_mesh(url=...).
 The server may run on another machine (Docker): paths are server paths, not paths on the user's computer.
 Reply in the user's language. The user watches live in the web editor: {{web_url}}
@@ -567,6 +568,45 @@ def slice_plate(plate: int = 1, materials: list[str] | None = None, one_filament
     res.update({"ok": True, "plate": plate, "download_url": links.download_url(res["gcode"]),
                 "filament_slots_in_gcode": {str(fmap[k]): f"CAD-Studio slot {k}" for k in slots}
                 if not one_filament else {"1": f"all parts (CAD-Studio slots {slots})"}})
+    return res
+
+
+@mcp.tool()
+def send_to_printer(plate: int = 1) -> dict:
+    """Hand the G-code of a plate (made by slice_plate) to Home Assistant, which starts the print.
+    Uploads the G-code to Home Assistant (/api/file_upload) and fires the event CADSTUDIO_HA_EVENT
+    (default "cadstudio_print_request") with: file_id, filename, project, plate, material, materials,
+    print_time, filament_g. A Home Assistant automation listens for that event - typically it asks on the
+    user's phone which ACE/AMS slot to print from and then calls the printer integration's print action with
+    uploaded_gcode_file = file_id. Needs CADSTUDIO_HA_URL and CADSTUDIO_HA_TOKEN (admin user) on the server.
+    Run slice_plate(plate=N) first; this sends the most recent slice of that plate."""
+    from . import homeassistant as HA
+    from . import slicer
+    if not HA.configured():
+        return {"ok": False, "error": "Home Assistant is not configured on this server: set CADSTUDIO_HA_URL and "
+                                      "CADSTUDIO_HA_TOKEN (long-lived token of an admin user) and restart."}
+    proj = _proj()
+    gcode = proj.dir / "exports" / f"{proj.name}-plate{plate}.gcode"
+    if not gcode.is_file():
+        return {"ok": False, "error": f"No G-code for plate {plate} yet - run slice_plate(plate={plate}) first."}
+    warnings = []
+    pj = proj.dir / "project.json"
+    if pj.exists() and pj.stat().st_mtime > gcode.stat().st_mtime + 1:
+        warnings.append("The project was changed after this plate was sliced; the G-code may be outdated "
+                        "(run slice_plate again if the parts on this plate changed).")
+    stats = slicer._parse_gcode_stats(gcode)
+    materials = HA.gcode_materials(gcode)
+    try:
+        file_id = HA.upload_file(gcode)
+        data = {"file_id": file_id, "filename": gcode.name, "project": proj.name, "plate": plate,
+                "material": materials[0] if materials else "", "materials": materials,
+                "print_time": stats.get("print_time", ""), "filament_g": stats.get("filament_g", "")}
+        event = HA.fire_event(data)
+    except HA.HomeAssistantError as e:
+        return {"ok": False, "error": str(e)}
+    res = {"ok": True, "event": event, **data}
+    if warnings:
+        res["warnings"] = warnings
     return res
 
 

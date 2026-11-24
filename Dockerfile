@@ -13,7 +13,8 @@ WORKDIR /build
 RUN curl -fsSL -o orca.AppImage \
       "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v${ORCA_VERSION}/OrcaSlicer_Linux_AppImage_Ubuntu2404_V${ORCA_VERSION}.AppImage" \
  && chmod +x orca.AppImage && ./orca.AppImage --appimage-extract >/dev/null \
- && mv squashfs-root /opt/orca && rm orca.AppImage
+ && mv squashfs-root /opt/orca && rm orca.AppImage \
+ && chmod -R a+rX /opt/orca
 RUN git clone -q --depth 1 --branch "v${ORCA_VERSION}" --filter=blob:none --sparse \
       https://github.com/OrcaSlicer/OrcaSlicer orca-src \
  && git -C orca-src sparse-checkout set --no-cone '/resources/profiles/*.json' '/resources/profiles/*/machine/' \

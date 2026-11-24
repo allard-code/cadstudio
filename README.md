@@ -117,6 +117,7 @@ Example prompts:
 | Inspecting | `measure`, `render_preview` |
 | Import | `list_inbox`, `import_mesh` (inbox file or URL) |
 | Export | `export_3mf`, `export_stl`, `export_step` (each with a download link) |
+| Printing | `slice_plate` (G-code with the bundled OrcaSlicer), `send_to_printer` (hand it to Home Assistant) |
 | Help | `get_build123d_reference`, `open_editor` |
 
 **Editor:**
@@ -142,6 +143,20 @@ under the 3D view switches between beds; *Arrange* spreads all printable parts o
 part's position is relative to the centre of its own bed. *Export 3MF* puts every bed in one file as separate
 slicer plates (Orca flavour), or, with "1 file per bed", writes one 3MF per bed — use that for PrusaSlicer, which
 has no plates.
+
+### Printing via Home Assistant
+
+`send_to_printer(plate=N)` uploads the G-code from `slice_plate` to Home Assistant (`/api/file_upload`) and fires
+the event `cadstudio_print_request` with `file_id`, `filename`, `project`, `plate`, `material`, `materials`,
+`print_time` and `filament_g`. An automation in Home Assistant decides what happens next — for example: ask on
+your phone which ACE/AMS slot to print from, then call the printer integration's print action with
+`uploaded_gcode_file: "{{ trigger.event.data.file_id }}"`. See
+[docs/home-assistant-print.yaml](docs/home-assistant-print.yaml) for a ready-made automation for the Anycubic Cloud
+integration.
+
+Set `CADSTUDIO_HA_URL` (e.g. `http://192.168.1.10:8123`) and `CADSTUDIO_HA_TOKEN` — a long-lived access token
+(Profile → Security) of an **admin** user, because file upload is admin-only. `CADSTUDIO_HA_EVENT` changes the
+event name.
 
 ### Multi-colour
 

@@ -1,0 +1,85 @@
+# Example Home Assistant automation for CAD-Studio's send_to_printer().
+#
+# CAD-Studio uploads the G-code to Home Assistant and fires `cadstudio_print_request` with:
+#   file_id, filename, project, plate, material, materials, print_time, filament_g
+# This automation asks on your phone which ACE slot (holding that material) to print from, then starts the
+# print with the Anycubic Cloud integration. Dismissing the notification cancels; a new request replaces an
+# open one (mode: restart).
+#
+# Create it in Settings -> Automations -> Create -> ⋮ -> Edit in YAML, and replace the placeholders:
+#   - notify.mobile_app_YOUR_PHONE
+#   - the four ACE slot sensors (state = material, attributes `slot` and `color`)
+#   - config_entry / device_id of your printer in the anycubic_cloud action
+# Android shows at most 3 notification buttons, so at most 3 matching slots are offered.
+alias: CAD-Studio – start print with slot choice
+mode: restart
+triggers:
+  - trigger: event
+    event_type: cadstudio_print_request
+variables:
+  slot_sensors:
+    - sensor.YOUR_PRINTER_ace_slot_1
+    - sensor.YOUR_PRINTER_ace_slot_2
+    - sensor.YOUR_PRINTER_ace_slot_3
+    - sensor.YOUR_PRINTER_ace_slot_4
+  req: "{{ trigger.event.data }}"
+  material: "{{ (trigger.event.data.material | default('')) | upper }}"
+  slots: >-
+    {% set ns = namespace(s=[]) %}
+    {% for e in slot_sensors %}
+      {% if states(e) not in ['unknown', 'unavailable', ''] and (material == '' or (states(e) | upper) == material) %}
+        {% set ns.s = ns.s + [{'slot': state_attr(e, 'slot') | int(loop.index), 'material': states(e)}] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.s[:3] }}
+actions:
+  - if:
+      - condition: template
+        value_template: "{{ slots | length == 0 }}"
+    then:
+      - action: notify.mobile_app_YOUR_PHONE
+        data:
+          title: Print not started
+          message: "{{ req.project }} plate {{ req.plate }}: no ACE slot holds {{ material or 'filament' }}."
+          data:
+            tag: cadstudio_print
+      - stop: No slot with the requested material
+  - action: notify.mobile_app_YOUR_PHONE
+    data:
+      title: "Ready to print: {{ req.project }} plate {{ req.plate }}"
+      message: "{{ material }}, {{ req.print_time }}, {{ req.filament_g }} g. Which slot? Dismiss to cancel."
+      data:
+        tag: cadstudio_print
+        actions: >-
+          {% set ns = namespace(a=[]) %}
+          {% for s in slots %}
+            {% set ns.a = ns.a + [{'action': 'CADSTUDIO_SLOT_' ~ s.slot, 'title': 'Slot ' ~ s.slot ~ ' – ' ~ s.material}] %}
+          {% endfor %}
+          {{ ns.a }}
+  - wait_for_trigger:
+      - {trigger: event, event_type: mobile_app_notification_action, event_data: {action: CADSTUDIO_SLOT_1}, id: slot_1}
+      - {trigger: event, event_type: mobile_app_notification_action, event_data: {action: CADSTUDIO_SLOT_2}, id: slot_2}
+      - {trigger: event, event_type: mobile_app_notification_action, event_data: {action: CADSTUDIO_SLOT_3}, id: slot_3}
+      - {trigger: event, event_type: mobile_app_notification_action, event_data: {action: CADSTUDIO_SLOT_4}, id: slot_4}
+      - {trigger: event, event_type: mobile_app_notification_cleared, event_data: {tag: cadstudio_print}, id: cleared}
+    timeout: {hours: 2}
+    continue_on_timeout: false
+  - if:
+      - condition: template
+        value_template: "{{ wait.trigger.id == 'cleared' }}"
+    then:
+      - stop: Notification dismissed
+  - variables:
+      slot: "{{ wait.trigger.id | replace('slot_', '') | int }}"
+  - action: anycubic_cloud.print_and_upload_no_cloud_save
+    data:
+      config_entry: YOUR_ANYCUBIC_CONFIG_ENTRY_ID
+      device_id: YOUR_PRINTER_DEVICE_ID
+      slot_number: "{{ [slot] }}"
+      uploaded_gcode_file: "{{ req.file_id }}"
+  - action: notify.mobile_app_YOUR_PHONE
+    data:
+      title: Print started
+      message: "{{ req.project }} plate {{ req.plate }} from slot {{ slot }} ({{ req.print_time }})."
+      data:
+        tag: cadstudio_print
