@@ -64,6 +64,10 @@ Voorbeeldvraag: *"Maak een bakje van 80×50×30 mm met 2 mm wand, afgeronde hoek
   printbare onderdelen automatisch over zoveel bedden als nodig. De 3MF-export zet elk bed als eigen plaat in één
   bestand, of met "1 bestand per bed" in losse bestanden.
 - **Export "1 object (multi-color)":** elk deel krijgt een eigen extruder, op dezelfde manier als Bambu Studio en OrcaSlicer dat opslaan.
+- **Printen via Home Assistant:** `slice_plate` maakt G-code, `send_to_printer` uploadt die naar Home Assistant en
+  vuurt het event `cadstudio_print_request` af (met `file_id`, materiaal, printtijd en gram). Een automation kiest
+  daarna het slot en start de print; zie [docs/home-assistant-print.yaml](docs/home-assistant-print.yaml). Zet
+  `CADSTUDIO_HA_URL` en `CADSTUDIO_HA_TOKEN` (long-lived token van een **admin**-gebruiker).
 - **Taal:** de editor is Engels- en Nederlandstalig; wissel met de EN/NL-keuze rechtsboven.
 
 ## Beveiliging

@@ -6,11 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ## [Unreleased]
 
 ### Fixed
+- Slicing failed with "orca-slicer-env: Permission denied" when the server runs as a non-root user (PUID): the
+  unpacked OrcaSlicer AppImage has owner-only directories (`/opt/orca/libexec` is `drwx------`). The image now
+  makes `/opt/orca` readable and executable for everyone.
 - The editor could show a stale project until a hard refresh (Ctrl+F5): API responses and the editor page are now
   sent with `Cache-Control: no-store`, and the editor's own JS/CSS with `no-cache` (revalidated on every load).
 - Resizing a part in the editor (scale) was silently dropped by the REST API.
 
 ### Added
+- `send_to_printer(plate)`: hands the G-code of a sliced plate to Home Assistant. It uploads the file to
+  `/api/file_upload` and fires `cadstudio_print_request` (file id, project, plate, material, print time, grams),
+  so a Home Assistant automation can ask which ACE/AMS slot to use and start the print. Configure with
+  `CADSTUDIO_HA_URL` and `CADSTUDIO_HA_TOKEN` (admin user); example automation in `docs/home-assistant-print.yaml`.
 - The editor shows the running version at the bottom of the right panel: version number, build commit and
   date, the bundled OrcaSlicer version, and whether a newer build is published (a cached GitHub lookup once
   an hour; turn it off with `CADSTUDIO_UPDATE_CHECK=0`). `/health` and the new `/api/version` report it too.

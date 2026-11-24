@@ -19,6 +19,9 @@ services:
       # printer for slice_plate (OrcaSlicer system profile)
       CADSTUDIO_PRINTER: ${CADSTUDIO_PRINTER:-Anycubic Kobra S1 0.4 nozzle}
       CADSTUDIO_PRINTER_VENDOR: ${CADSTUDIO_PRINTER_VENDOR:-Anycubic}
+      # optional: Home Assistant for send_to_printer (token of an admin user)
+      CADSTUDIO_HA_URL: ${CADSTUDIO_HA_URL:-}
+      CADSTUDIO_HA_TOKEN: ${CADSTUDIO_HA_TOKEN:-}
       PUID: 1000   # owner of the files in ./data
       PGID: 1000
     volumes:
