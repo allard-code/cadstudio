@@ -1,10 +1,11 @@
 # CAD-Studio: web editor + MCP server (streamable HTTP on /mcp) in one container.
+ARG ORCA_VERSION=2.5.2
 
 # --- OrcaSlicer (command line slicing for slice_plate) -------------------------------------------------
 # The release AppImage is unpacked (no FUSE needed at runtime). Its vendor profiles ship packed, so the
 # printer/process/filament JSON profiles are taken from the matching source tag.
 FROM debian:trixie-slim AS orca
-ARG ORCA_VERSION=2.5.2
+ARG ORCA_VERSION
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates git \
  && rm -rf /var/lib/apt/lists/*
@@ -23,6 +24,7 @@ RUN git clone -q --depth 1 --branch "v${ORCA_VERSION}" --filter=blob:none --spar
 
 # --- CAD-Studio ---------------------------------------------------------------------------------------
 FROM python:3.13-slim
+ARG ORCA_VERSION
 
 # OpenCascade (OCP) links against libGL; fonts are needed for Text() in build123d.
 # The rest are OrcaSlicer's runtime libraries (it links GTK/WebKit even when only the CLI is used).
@@ -42,6 +44,13 @@ COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY cadstudio ./cadstudio
 RUN pip install --no-cache-dir --no-deps . \
  && python -c "import build123d, cadstudio.web; print('import ok')"
+
+# build info shown in the editor (set by the GitHub workflows; empty for local builds)
+ARG CADSTUDIO_COMMIT=""
+ARG CADSTUDIO_BUILD_DATE=""
+ENV CADSTUDIO_COMMIT=${CADSTUDIO_COMMIT} \
+    CADSTUDIO_BUILD_DATE=${CADSTUDIO_BUILD_DATE} \
+    CADSTUDIO_ORCA_VERSION=${ORCA_VERSION}
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh && mkdir -p /data

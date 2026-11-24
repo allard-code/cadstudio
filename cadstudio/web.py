@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import links
 from . import project as P
+from . import version as _version
 from .export3mf import export_3mf, export_step, export_stl
 from .render import render_png, thumbnail
 
@@ -131,7 +132,14 @@ async def login(request: Request):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "project": P.current_project_name()}
+    v = _version.info(check_updates=False)
+    return {"ok": True, "project": P.current_project_name(), "version": v["version"], "commit": v["short"]}
+
+
+@app.get("/api/version")
+def version_info():
+    """Running version/build, and whether a newer commit is published (cached GitHub lookup)."""
+    return _version.info()
 
 
 # --------------------------------------------------------------------------- pages

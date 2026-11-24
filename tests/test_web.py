@@ -67,3 +67,12 @@ def test_download_link_rejects_paths_outside_projects(tmp_path):
     outside = tmp_path / "x.txt"
     outside.write_text("x")
     assert links.download_url(outside) is None
+
+
+def test_version_endpoint(client, monkeypatch):
+    monkeypatch.delenv("CADSTUDIO_TOKEN", raising=False)
+    monkeypatch.delenv("CADSTUDIO_COMMIT", raising=False)
+    from cadstudio import __version__
+    v = client.get("/api/version").json()
+    assert v["version"] == __version__ and v["commit"] is None
+    assert client.get("/health").json()["version"] == __version__

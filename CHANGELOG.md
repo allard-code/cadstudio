@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Resizing a part in the editor (scale) was silently dropped by the REST API.
 
 ### Added
+- The editor shows the running version at the bottom of the right panel: version number, build commit and
+  date, the bundled OrcaSlicer version, and whether a newer build is published (a cached GitHub lookup once
+  an hour; turn it off with `CADSTUDIO_UPDATE_CHECK=0`). `/health` and the new `/api/version` report it too.
 - `slice_plate()`: slices a build plate to G-code with OrcaSlicer, which is now bundled in the Docker image
   (v2.5.2, command line only). Printer, process and filament settings come from OrcaSlicer's own system profiles
   (default printer: `CADSTUDIO_PRINTER`, "Anycubic Kobra S1 0.4 nozzle"), with overrides for layer height,
