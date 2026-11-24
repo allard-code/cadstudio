@@ -16,6 +16,9 @@ services:
       # The address you/Claude use to reach the server (used for download links returned to Claude)
       CADSTUDIO_PUBLIC_URL: ${CADSTUDIO_PUBLIC_URL:-http://localhost:8765}
       TZ: ${TZ:-Europe/Amsterdam}
+      # printer for slice_plate (OrcaSlicer system profile)
+      CADSTUDIO_PRINTER: ${CADSTUDIO_PRINTER:-Anycubic Kobra S1 0.4 nozzle}
+      CADSTUDIO_PRINTER_VENDOR: ${CADSTUDIO_PRINTER_VENDOR:-Anycubic}
       PUID: 1000   # owner of the files in ./data
       PGID: 1000
     volumes:

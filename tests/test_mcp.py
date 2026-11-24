@@ -51,7 +51,7 @@ def test_mcp_round_trip(server):
             async with ClientSession(streams[0], streams[1]) as s:
                 await s.initialize()
                 tools = {t.name for t in (await s.list_tools()).tools}
-                assert {"set_part", "render_preview", "export_3mf", "import_mesh", "check_floating"} <= tools
+                assert {"set_part", "render_preview", "export_3mf", "import_mesh", "check_floating", "slice_plate"} <= tools
                 await s.call_tool("new_project", {"name": "e2e"})
                 rep = _text(await s.call_tool("set_part", {"name": "a", "code": "result = Box(10, 10, 10)", "color": "#D62828"}))
                 assert rep["ok"] and rep["watertight"]

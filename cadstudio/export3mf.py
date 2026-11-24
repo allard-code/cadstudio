@@ -113,8 +113,9 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
                only: list[str] | None = None, object_name: str | None = None, thumbnail: bytes | None = None,
                filament_density_g_cm3: float = 1.24, filament_price_eur_kg: float | None = None,
                print_rate_cm3_per_hour: float | None = 15.0, plate: int | None = None,
-               split_plates: bool = False) -> dict:
-    """plate: export only that plate (centred on a single bed). split_plates: one file per plate."""
+               split_plates: bool = False, filament_map: dict[int, int] | None = None) -> dict:
+    """plate: export only that plate (centred on a single bed). split_plates: one file per plate.
+    filament_map: renumber filament slots in the file, e.g. {1: 1, 2: 1} prints everything with filament 1."""
     path = Path(path) if path else proj.dir / "exports" / f"{proj.name}.3mf"
     if path.suffix.lower() != ".3mf":
         path = path.with_suffix(".3mf")
@@ -126,7 +127,8 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
             results.append(export_3mf(proj, sub, mode=mode, flavor=flavor, only=only, object_name=object_name,
                                       thumbnail=thumbnail, filament_density_g_cm3=filament_density_g_cm3,
                                       filament_price_eur_kg=filament_price_eur_kg,
-                                      print_rate_cm3_per_hour=print_rate_cm3_per_hour, plate=k))
+                                      print_rate_cm3_per_hour=print_rate_cm3_per_hour, plate=k,
+                                      filament_map=filament_map))
         out = {"paths": [r["path"] for r in results], "flavor": flavor, "mode": mode,
                "plates": {str(k): r for k, r in zip(used, results)},
                "warnings": [w for r in results for w in r["warnings"]],
@@ -135,6 +137,9 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
             out["print_time_hours_estimate"] = round(sum(r["print_time_hours_estimate"] for r in results), 2)
         return out
     items = exportable_meshes(proj, only, plate=plate)
+    if filament_map:
+        items = [({**s, "filament": int(filament_map.get(int(s["filament"]), s["filament"]))}, V, F)
+                 for s, V, F in items]
     count = 1 if plate is not None else proj.plate_count
     if plate is not None:
         items, warnings = _place(items, center=True, label=f"Plate {plate}")

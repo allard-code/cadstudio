@@ -54,6 +54,8 @@ Workflow:
    their location relative to their own plate; the editor and export lay plates out side by side.
 6. export_3mf() for the slicer (all plates in one file; split_plates=True for one file per plate).
    Give the user the download_url and tell them which filament slot needs which colour.
+   Or slice_plate(plate=N) for ready-to-print G-code from the bundled OrcaSlicer (printer profile from
+   CADSTUDIO_PRINTER); one_filament=True prints the whole plate from a single spool.
 User files (STL/3MF from MakerWorld etc.): list_inbox() + import_mesh(file_path), or import_mesh(url=...).
 The server may run on another machine (Docker): paths are server paths, not paths on the user's computer.
 Reply in the user's language. The user watches live in the web editor: {{web_url}}
@@ -517,6 +519,54 @@ def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str 
         res["download_urls"] = [links.download_url(p) for p in res["paths"]]
     else:
         res["download_url"] = links.download_url(res["path"])
+    return res
+
+
+@mcp.tool()
+def slice_plate(plate: int = 1, materials: list[str] | None = None, one_filament: bool = False,
+                layer_height_mm: float | None = None, infill_percent: float | None = None,
+                wall_loops: int | None = None, top_layers: int | None = None, bottom_layers: int | None = None,
+                supports: bool | None = None, brim_width_mm: float | None = None, process: str | None = None,
+                printer: str | None = None) -> dict:
+    """Slice one build plate to G-code with the bundled OrcaSlicer (Docker image), ready for the printer.
+    Uses OrcaSlicer's system profiles for the printer (default from CADSTUDIO_PRINTER, e.g.
+    "Anycubic Kobra S1 0.4 nozzle") and its default process ("0.20mm Standard @..."), with optional overrides:
+    layer_height_mm, infill_percent, wall_loops, top_layers, bottom_layers, supports, brim_width_mm.
+    materials: one entry per filament slot used on the plate, in slot order - a material ("PLA", "PETG",
+    "PLA+", "ABS", ...) or a full OrcaSlicer filament preset name. Default: PLA for every slot.
+    one_filament=True prints all parts with a single filament (filament 1 in the G-code); which ACE/AMS slot
+    feeds it is chosen when the print is started (in the slicer/printer app or by the print service).
+    Returns the G-code path + download_url and the slicer's own estimates (print time, filament grams)."""
+    from . import slicer
+    proj = _proj()
+    if not slicer.available():
+        return {"ok": False, "error": "OrcaSlicer is not available on this server. It is bundled in the Docker "
+                                      "image (ghcr.io/allard-code/cadstudio); a local install needs CADSTUDIO_ORCA."}
+    try:
+        slots = sorted({int(s["filament"]) for s, _, _ in P.exportable_meshes(proj, None, plate=plate)})
+    except P.PartError as e:
+        return {"ok": False, "error": str(e)}
+    fmap = {k: (1 if one_filament else i + 1) for i, k in enumerate(slots)}
+    n = 1 if one_filament else len(slots)
+    mats = list(materials or [])
+    if len(mats) < n:
+        mats += [mats[-1] if mats else "PLA"] * (n - len(mats))
+    mats = mats[:n]
+    out_dir = proj.dir / "exports"
+    model = out_dir / f"{proj.name}-plate{plate}.3mf"
+    try:
+        _export_3mf(proj, model, mode="assembly", flavor="orca", plate=plate, filament_map=fmap)
+        overrides = {"layer_height_mm": layer_height_mm, "infill_percent": infill_percent, "wall_loops": wall_loops,
+                     "top_layers": top_layers, "bottom_layers": bottom_layers, "supports": supports,
+                     "brim_width_mm": brim_width_mm}
+        res = slicer.slice_3mf(model, out_dir, printer=printer or slicer.DEFAULT_PRINTER, process=process,
+                               filaments=mats, overrides=overrides)
+    except slicer.SlicerError as e:
+        return {"ok": False, "error": str(e)}
+    res.pop("log", None)
+    res.update({"ok": True, "plate": plate, "download_url": links.download_url(res["gcode"]),
+                "filament_slots_in_gcode": {str(fmap[k]): f"CAD-Studio slot {k}" for k in slots}
+                if not one_filament else {"1": f"all parts (CAD-Studio slots {slots})"}})
     return res
 
 
