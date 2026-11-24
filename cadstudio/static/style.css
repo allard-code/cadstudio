@@ -61,6 +61,10 @@ h3{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.8px;co
 .t.err{border-left-color:var(--danger)}.t.ok{border-left-color:var(--ok)}
 .t a{color:var(--accent)}
 #inspector{padding:12px}
+#right{display:flex;flex-direction:column}
+#version{margin-top:auto;padding:8px 12px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;line-height:1.5}
+#version .ok{color:#3fb950}
+#version .upd{color:#d29922}
 #inspector.empty .hint{color:var(--muted)}
 .howto{margin-top:20px;padding:10px;border:1px dashed var(--line);border-radius:8px;color:var(--muted)}
 .howto h4{margin:0 0 6px;color:var(--text)}

@@ -841,11 +841,35 @@ function connectEvents() {
   };
 }
 
+// version footer (right panel): running build + whether a newer one is published
+let versionInfo = null;
+function renderVersion() {
+  const el = $("#version");
+  if (!el || !versionInfo) return;
+  const v = versionInfo;
+  const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const date = v.built ? new Date(v.built).toLocaleString(LANG === "nl" ? "nl-NL" : "en-GB",
+    { dateStyle: "medium", timeStyle: "short" }) : "";
+  let line2 = v.commit ? t("version.build", { commit: esc(v.short), date: esc(date || "?") }) : t("version.dev");
+  let status = "";
+  if (v.up_to_date === true) status = `<span class="ok">✓ ${t("version.latest")}</span>`;
+  else if (v.up_to_date === false) status = `<span class="upd">⚠ ${t("version.update", { commit: esc(v.latest_commit) })}</span>`;
+  else if (v.update_check_error) status = t("version.nocheck");
+  const orca = v.orcaslicer ? ` · ${t("version.orca", { v: esc(v.orcaslicer) })}` : "";
+  el.innerHTML = `CAD-Studio v${esc(v.version)}${orca}<br>${line2}${status ? "<br>" + status : ""}`;
+}
+async function loadVersion() {
+  try { versionInfo = await api("/api/version"); renderVersion(); } catch { /* optional */ }
+}
+loadVersion();
+setInterval(loadVersion, 60 * 60 * 1000);
+
 // language
 applyI18n();
 $("#langSelect").value = LANG;
 $("#langSelect").onchange = (e) => {
   setLang(e.target.value);
+  renderVersion();
   if (S.project) { renderParams(); renderParts(); renderInspector(true); updateDims(); renderPlates(); syncSceneProps(); }
 };
 
