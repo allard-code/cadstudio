@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-24
+
+### Fixed
+- Prints sent to an Anycubic printer with an ACE (e.g. via `send_to_printer` and the Home Assistant anycubic_cloud
+  integration) were refused with "Cannot load AMS paint info from gcode": OrcaSlicer's G-code lacks the
+  per-filament `paint_info` that Anycubic Slicer Next writes. `slice_plate` now appends it (plus the
+  "filament used" values as lists) as comments at the end of the G-code for Anycubic printers.
+
 ## [0.4.0] - 2026-11-24
 
 ### Changed
@@ -158,6 +166,7 @@ First public release.
 - MCP server (stdio) with tools for modelling, measuring, rendering previews and exporting.
 - Multi-colour 3MF export for Orca/Bambu/Anycubic and PrusaSlicer, plus STL and STEP.
 
-[Unreleased]: https://github.com/allard-code/cadstudio/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/allard-code/cadstudio/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/allard-code/cadstudio/releases/tag/v0.4.1
 [0.4.0]: https://github.com/allard-code/cadstudio/releases/tag/v0.4.0
 [0.3.0]: https://github.com/allard-code/cadstudio/releases/tag/v0.3.0
