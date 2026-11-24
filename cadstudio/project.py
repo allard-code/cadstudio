@@ -55,6 +55,17 @@ PART_DEFAULTS: dict[str, Any] = {
     "plate": 1,  # build plate (bed) number, 1-based; location stays relative to that plate's centre
 }
 
+# Assembly ("Samenstel"): how the printed parts go together. Items are build123d code like parts (shared code,
+# parameters and part() are available) but live outside the build plates: never exported, sliced or arranged.
+ASSEMBLY_DEFAULTS: dict[str, Any] = {
+    "code": "",
+    "color": "#B0B7C3",
+    "visible": True,
+    "ghost": False,     # drawn see-through, so what's inside shows (e.g. the body shell)
+    "explode": None,    # [dx, dy, dz] offset (mm) at explode factor 1; None = away from the assembly centre
+    "note": "",
+}
+
 # Orca/Bambu lay plates out in a grid with a gap of 1/5 of the bed size between them (LOGICAL_PART_PLATE_GAP)
 PLATE_GAP = 0.2
 MAX_PLATES = 36
@@ -135,6 +146,7 @@ class Project:
         self.data: dict[str, Any] = {"name": self.name, "rev": 0, "params": {}, "parts": [], "notes": "", "common": ""}
         self._mtime = None
         self._cache: dict[str, dict] = {}  # part name -> {"key", "shape", "mesh", "info"}
+        self._acache: dict[str, dict] = {}  # assembly item name -> same
         if self.file.exists():
             self.refresh(force=True)
         else:
@@ -242,9 +254,10 @@ class Project:
                 if p["name"] == old:
                     p["name"] = new
                     # update references in other parts' code
-                    for q in self.parts:
+                    for q in self.parts + self.assembly:
                         q["code"] = re.sub(rf"""part\(\s*(["']){re.escape(old)}\1""", f'part("{new}"', q.get("code", ""))
                     self._cache.clear()
+                    self._acache.clear()
                     self.save()
                     return
             raise PartError(f"Part '{old}' does not exist")
@@ -259,6 +272,56 @@ class Project:
                     if v is None:
                         del self.params[k]
             self.save()
+
+    # ---- assembly
+    @property
+    def assembly(self) -> list[dict]:
+        return self.data.setdefault("assembly", [])
+
+    def find_assembly_item(self, name: str) -> dict:
+        for a in self.assembly:
+            if a["name"] == name:
+                return {**ASSEMBLY_DEFAULTS, **a}
+        raise PartError(f"Assembly item '{name}' does not exist. Existing items: {[a['name'] for a in self.assembly]}")
+
+    def upsert_assembly_item(self, name: str, **fields) -> dict:
+        with LOCK:
+            fields = {k: v for k, v in fields.items() if v is not None}
+            if "explode" in fields:
+                ex = fields["explode"]
+                fields["explode"] = None if ex in ([], False) else ([float(v) for v in ex] + [0.0] * 3)[:3]
+            for a in self.assembly:
+                if a["name"] == name:
+                    a.update(fields)
+                    break
+            else:
+                if not name.strip():
+                    raise PartError("Assembly item name can't be empty")
+                self.assembly.append({**ASSEMBLY_DEFAULTS, "name": name, **fields})
+            self.save()
+            return self.find_assembly_item(name)
+
+    def delete_assembly_item(self, name: str) -> None:
+        with LOCK:
+            before = len(self.assembly)
+            self.data["assembly"] = [a for a in self.assembly if a["name"] != name]
+            if len(self.assembly) == before:
+                raise PartError(f"Assembly item '{name}' does not exist")
+            self._acache.pop(name, None)
+            self.save()
+
+    def build_assembly_item(self, name: str) -> dict:
+        """Build an assembly item; same cache entry shape as build(). Never raises for user-code errors."""
+        with LOCK:
+            spec = self.find_assembly_item(name)
+            refs = [r for r in dict.fromkeys(PART_REF.findall(spec.get("code") or "")) if self.has(r)]
+            key = _sha([spec, self.params, self.data.get("common", ""), [self._key(r) for r in refs]])
+            hit = self._acache.get(name)
+            if hit and hit["key"] == key:
+                return hit
+            entry = self._make_entry({**spec, "type": "code", "location": None, "scale": None}, key, (), name)
+            self._acache[name] = entry
+            return entry
 
     def save_preset(self, name: str) -> dict:
         """Save the current parameters under a name, so a different size/variant can be switched back to later."""
@@ -519,6 +582,7 @@ class Project:
                 if cp_sub.exists():
                     shutil.copytree(cp_sub, d)
             self._cache.clear()
+            self._acache.clear()
             self.save()
             return self.summary()
 
@@ -698,54 +762,58 @@ class Project:
             hit = self._cache.get(name)
             if hit and hit["key"] == key:
                 return hit
-            spec = self.find(name)
-            t0 = time.time()
-            entry: dict[str, Any] = {"key": key, "shape": None, "mesh": None, "info": {"name": name, "key": key[:12]}}
-            out = io.StringIO()
-            try:
-                if name in _stack:
-                    raise PartError(f"Circular reference: {' -> '.join(_stack + (name,))}")
-                if spec["type"] == "mesh":
-                    V, F = self._load_mesh(spec)
-                    entry["mesh"] = (V, F)
-                else:
-                    with contextlib.redirect_stdout(out):
-                        shape = self._eval_code(spec, _stack + (name,))
-                    if isinstance(shape, MeshResult):
-                        entry["mesh"] = weld(shape.V, shape.F)  # already final triangles, not an OCCT shape
-                        entry["info"]["volume_mm3"] = round(mesh_volume(*entry["mesh"]), 2)
-                    else:
-                        entry["shape"] = shape
-                        entry["mesh"] = tessellate(shape)
-                        try:
-                            entry["info"]["volume_mm3"] = round(float(shape.volume), 2)
-                        except Exception:
-                            pass
-                V, F = entry["mesh"]
-                if len(F) == 0:
-                    raise PartError("Result contains no geometry (empty after a boolean?)")
-                lo, hi = V.min(axis=0), V.max(axis=0)
-                entry["info"].update(
-                    ok=True,
-                    bbox_min=[round(float(x), 3) for x in lo],
-                    bbox_max=[round(float(x), 3) for x in hi],
-                    size=[round(float(x), 3) for x in hi - lo],
-                    triangles=int(len(F)),
-                    watertight=is_watertight(F),
-                )
-                if spec["type"] == "mesh" and "volume_mm3" not in entry["info"]:
-                    entry["info"]["volume_mm3"] = round(mesh_volume(V, F), 2)
-            except Exception as e:  # user code errors are reported, not raised
-                tb = traceback.format_exc(limit=6)
-                # keep only the frames from the user's code where possible
-                user = [ln for ln in tb.splitlines() if "<part " in ln or "<common>" in ln]
-                entry["info"].update(ok=False, error=f"{type(e).__name__}: {e}",
-                                     traceback="\n".join(user) or tb)
-            entry["info"]["build_s"] = round(time.time() - t0, 3)
-            if out.getvalue():
-                entry["info"]["stdout"] = out.getvalue()[-4000:]
+            entry = self._make_entry(self.find(name), key, _stack, name)
             self._cache[name] = entry
             return entry
+
+    def _make_entry(self, spec: dict, key: str, _stack: tuple, name: str) -> dict:
+        """Evaluate a part (or assembly item) spec into {"key", "shape", "mesh", "info"}."""
+        t0 = time.time()
+        entry: dict[str, Any] = {"key": key, "shape": None, "mesh": None, "info": {"name": name, "key": key[:12]}}
+        out = io.StringIO()
+        try:
+            if name in _stack:
+                raise PartError(f"Circular reference: {' -> '.join(_stack + (name,))}")
+            if spec["type"] == "mesh":
+                V, F = self._load_mesh(spec)
+                entry["mesh"] = (V, F)
+            else:
+                with contextlib.redirect_stdout(out):
+                    shape = self._eval_code(spec, _stack + (name,))
+                if isinstance(shape, MeshResult):
+                    entry["mesh"] = weld(shape.V, shape.F)  # already final triangles, not an OCCT shape
+                    entry["info"]["volume_mm3"] = round(mesh_volume(*entry["mesh"]), 2)
+                else:
+                    entry["shape"] = shape
+                    entry["mesh"] = tessellate(shape)
+                    try:
+                        entry["info"]["volume_mm3"] = round(float(shape.volume), 2)
+                    except Exception:
+                        pass
+            V, F = entry["mesh"]
+            if len(F) == 0:
+                raise PartError("Result contains no geometry (empty after a boolean?)")
+            lo, hi = V.min(axis=0), V.max(axis=0)
+            entry["info"].update(
+                ok=True,
+                bbox_min=[round(float(x), 3) for x in lo],
+                bbox_max=[round(float(x), 3) for x in hi],
+                size=[round(float(x), 3) for x in hi - lo],
+                triangles=int(len(F)),
+                watertight=is_watertight(F),
+            )
+            if spec["type"] == "mesh" and "volume_mm3" not in entry["info"]:
+                entry["info"]["volume_mm3"] = round(mesh_volume(V, F), 2)
+        except Exception as e:  # user code errors are reported, not raised
+            tb = traceback.format_exc(limit=6)
+            # keep only the frames from the user's code where possible
+            user = [ln for ln in tb.splitlines() if "<part " in ln or "<common>" in ln]
+            entry["info"].update(ok=False, error=f"{type(e).__name__}: {e}",
+                                 traceback="\n".join(user) or tb)
+        entry["info"]["build_s"] = round(time.time() - t0, 3)
+        if out.getvalue():
+            entry["info"]["stdout"] = out.getvalue()[-4000:]
+        return entry
 
     def _eval_code(self, spec: dict, stack: tuple):
         import build123d as bd
@@ -887,6 +955,10 @@ class Project:
         V = V + np.array([x, y, z])
         return V, F
 
+    def assembly_summary(self) -> list[dict]:
+        return [{**self.find_assembly_item(a["name"]), "info": self.build_assembly_item(a["name"])["info"]}
+                for a in self.assembly]
+
     def build_all(self) -> dict[str, dict]:
         return {p["name"]: self.build(p["name"]) for p in self.parts}
 
@@ -899,7 +971,7 @@ class Project:
         return {"name": self.name, "rev": self.rev, "params": self.params, "notes": self.data.get("notes", ""),
                 "common": self.data.get("common", ""), "presets": self.data.get("presets", {}),
                 "checkpoints": self.list_checkpoints(),
-                "parts": parts, "bed": BED, "plates": self.plate_count,
+                "parts": parts, "assembly": self.assembly_summary(), "bed": BED, "plates": self.plate_count,
                 "plate_origins": {str(i): plate_origin(i, self.plate_count) for i in range(1, self.plate_count + 1)},
                 "dir": str(self.dir)}
 

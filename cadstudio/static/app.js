@@ -14,6 +14,8 @@ const S = {
   measure: false, measurePoints: [], measureDist: null,
   clip: false, clipAxis: "z", clipFlip: false,
   plate: 0,               // build plate shown in the viewport; 0 = all plates side by side
+  asm: false,             // assembly view (how the parts go together) instead of the build plates
+  asmExplode: 0, asmHide: new Set(), asmGhost: null,   // asmGhost: Set of see-through items (null = from the project)
   dirtyCode: false, dirtyCommon: false,
 };
 const undoStack = []; const redoStack = []; const UNDO_LIMIT = 30;
@@ -94,6 +96,8 @@ function buildBeds(w = 250, d = 250) {
 buildBeds();
 
 const partsGroup = new THREE.Group(); scene.add(partsGroup);
+const asmGroup = new THREE.Group(); asmGroup.visible = false; scene.add(asmGroup);
+const asmMeshes = new Map();  // assembly item name -> {key, mesh, edges, centre}
 const measureGroup = new THREE.Group(); scene.add(measureGroup);
 const tc = new TransformControls(camera, renderer.domElement);
 tc.setSize(0.8);
@@ -130,8 +134,10 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   const r = renderer.domElement.getBoundingClientRect();
   ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ptr, camera);
-  const hits = ray.intersectObjects([...S.meshes.values()].map((m) => m.mesh).filter((m) => m.visible));
+  const pool = S.asm ? asmMeshes : S.meshes;
+  const hits = ray.intersectObjects([...pool.values()].map((m) => m.mesh).filter((m) => m.visible));
   if (S.measure) { if (hits.length) addMeasurePoint(hits[0].point); return; }
+  if (S.asm) return;  // assembly items aren't editable parts
   select(hits.length ? hits[0].object.userData.name : null);
 });
 
@@ -240,6 +246,110 @@ async function loadMesh(part) {
   applyOverhangColors(entry, part.color);
 }
 
+// ------------------------------------------------------------------ assembly view
+const asmItems = () => (S.project && S.project.assembly) || [];
+const asmGhosts = () => S.asmGhost || new Set(asmItems().filter((a) => a.ghost).map((a) => a.name));
+
+async function loadAsmMesh(item) {
+  const info = item.info || {};
+  const cur = asmMeshes.get(item.name);
+  if (!info.ok) { if (cur) cur.mesh.visible = false; return; }
+  if (cur && cur.key === info.key) return;
+  const buf = await api(`/api/assembly/mesh/${encodeURIComponent(item.name)}`);
+  const head = new Uint32Array(buf, 0, 2);
+  const nv = head[0], nt = head[1];
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(buf, 8, nv * 3), 3));
+  geo.setIndex(new THREE.BufferAttribute(new Uint32Array(buf, 8 + nv * 12, nt * 3), 1));
+  geo.computeBoundingBox();
+  const centre = geo.boundingBox.getCenter(new THREE.Vector3());
+  geo.translate(-centre.x, -centre.y, -centre.z);
+  const mesh = new THREE.Mesh(toCreasedNormals(geo, Math.PI / 6), material(item.color));
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25),
+    new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 }));
+  mesh.add(edges);
+  if (cur) { asmGroup.remove(cur.mesh); cur.mesh.geometry.dispose(); }
+  asmGroup.add(mesh);
+  asmMeshes.set(item.name, { key: info.key, mesh, edges, centre });
+}
+
+// explode: every item moves away from the assembly centre (or along its own explode vector), times the slider
+function asmOffset(item) {
+  const f = S.asmExplode;
+  if (!f || !item.info || !item.info.ok) return new THREE.Vector3();
+  if (item.explode) return new THREE.Vector3(...item.explode).multiplyScalar(f);
+  const all = new THREE.Box3();
+  for (const a of asmItems()) if (a.info && a.info.ok) all.expandByPoint(new THREE.Vector3(...a.info.bbox_min)).expandByPoint(new THREE.Vector3(...a.info.bbox_max));
+  const c = new THREE.Vector3(...item.info.bbox_min).add(new THREE.Vector3(...item.info.bbox_max)).multiplyScalar(0.5);
+  return c.sub(all.getCenter(new THREE.Vector3())).multiplyScalar(f);
+}
+
+function syncAsm() {
+  const names = new Set(asmItems().map((a) => a.name));
+  for (const [n, m] of asmMeshes) if (!names.has(n)) { asmGroup.remove(m.mesh); asmMeshes.delete(n); }
+  const ghosts = asmGhosts();
+  for (const a of asmItems()) {
+    const m = asmMeshes.get(a.name); if (!m) continue;
+    m.mesh.position.copy(m.centre).add(asmOffset(a));
+    m.mesh.visible = a.visible && a.info.ok && !S.asmHide.has(a.name);
+    m.mesh.material.dispose(); m.mesh.material = material(a.color);
+    if (ghosts.has(a.name)) Object.assign(m.mesh.material, { transparent: true, opacity: 0.22, depthWrite: false });
+    m.edges.visible = S.edges;
+  }
+  asmGroup.visible = S.asm;
+}
+
+function renderAsm() {
+  const items = asmItems();
+  if (!items.length && S.asm) S.asm = false;
+  $("#asmTab").classList.toggle("hidden", !items.length);
+  $("#asmTab").classList.toggle("on", S.asm);
+  $("#asmPanel").classList.toggle("hidden", !S.asm);
+  for (const id of ["#plateTabs", "#plateAdd", "#plateDel", "#plateArrange"]) $(id).classList.toggle("hidden", S.asm);
+  const box = $("#asmItems"); box.innerHTML = "";
+  const ghosts = asmGhosts();
+  for (const a of items) {
+    const row = document.createElement("div"); row.className = "it" + (a.info.ok ? "" : " err");
+    if (!a.info.ok) row.title = a.info.error || "";
+    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = a.color;
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = a.name;
+    const chk = (label, on, fn) => {
+      const l = document.createElement("label"); const c = document.createElement("input");
+      c.type = "checkbox"; c.checked = on; c.onchange = () => { fn(c.checked); syncAsm(); };
+      l.append(c, document.createTextNode(label)); return l;
+    };
+    row.append(sw, nm,
+      chk(t("asm.show"), !S.asmHide.has(a.name), (v) => { if (v) S.asmHide.delete(a.name); else S.asmHide.add(a.name); }),
+      chk(t("asm.ghost"), ghosts.has(a.name), (v) => { S.asmGhost = new Set(asmGhosts()); if (v) S.asmGhost.add(a.name); else S.asmGhost.delete(a.name); }));
+    box.appendChild(row);
+  }
+}
+
+function setAsm(on) {
+  S.asm = on && asmItems().length > 0;
+  history.replaceState(null, "", S.asm ? "#assembly" : location.pathname + location.search);
+  if (S.asm && S.selected) { S.selected = null; renderParts(); renderInspector(); }
+  clearMeasure(); renderAsm(); syncSceneProps(); setView("fit");
+}
+$("#asmTab").onclick = () => setAsm(!S.asm);
+$("#asmExplode").oninput = (e) => { S.asmExplode = +e.target.value / 100; syncAsm(); updateDims(); };
+$("#asmPng").onclick = () => {
+  // the server picks the view direction closest to the editor camera and cuts the half facing the viewer
+  const d = camera.position.clone().sub(controls.target).normalize();
+  const views = { iso: [0.5, -0.71, 0.5], iso_back: [-0.5, 0.71, 0.5], front: [0, -1, 0], back: [0, 1, 0],
+    right: [1, 0, 0], left: [-1, 0, 0], top: [0, 0, 1], bottom: [0, 0, -1] };
+  let view = "iso", best = -2;
+  for (const [k, v] of Object.entries(views)) { const s = d.dot(new THREE.Vector3(...v).normalize()); if (s > best) { best = s; view = k; } }
+  const q = new URLSearchParams({ view, explode: String(S.asmExplode), ghost: [...asmGhosts()].join(","), download: "1" });
+  if (S.asmHide.size) q.set("hide", [...S.asmHide].join(","));
+  if (S.clip) {
+    const axis = CLIP_AXES[S.clipAxis]; const b = bbox();
+    const lo = b.min.dot(axis), hi = b.max.dot(axis);
+    q.set("section", S.clipAxis); q.set("section_at", String(lo + (hi - lo) * (+$("#clipSlider").value / 1000)));
+  }
+  const a = document.createElement("a"); a.href = `/api/assembly.png?${q}`; a.download = ""; document.body.appendChild(a); a.click(); a.remove();
+};
+
 function syncSceneProps() {
   const names = new Set(S.project.parts.map((p) => p.name));
   for (const [n, m] of S.meshes) if (!names.has(n)) { if (tc.object === m.mesh) tc.detach(); partsGroup.remove(m.mesh); S.meshes.delete(n); }
@@ -256,7 +366,9 @@ function syncSceneProps() {
     m.edges.visible = S.edges;
     if (p.name === S.selected) m.mesh.material.emissive = new THREE.Color(0x3a1d05);
   }
-  bedGroup.visible = S.bed;
+  bedGroup.visible = S.bed && !S.asm;
+  partsGroup.visible = !S.asm;
+  syncAsm();
   attachGizmo();
   updateDims();
   if (S.clip) updateClipPlane();
@@ -265,6 +377,14 @@ function syncSceneProps() {
 // world-space bounding box (plate offsets included) of the given parts, or of the visible parts on the shown plate(s)
 function bbox(names) {
   const b = new THREE.Box3();
+  if (S.asm && !names) {
+    for (const a of asmItems()) {
+      if (!a.visible || !a.info.ok || S.asmHide.has(a.name)) continue;
+      const o = asmOffset(a);
+      b.expandByPoint(new THREE.Vector3(...a.info.bbox_min).add(o)); b.expandByPoint(new THREE.Vector3(...a.info.bbox_max).add(o));
+    }
+    return b;
+  }
   for (const p of S.project.parts) {
     if (names && !names.includes(p.name)) continue;
     if (!names && (!p.visible || !onShownPlate(p))) continue;
@@ -293,9 +413,9 @@ function updateDims() {
   if (!all.isEmpty()) {
     const s = all.getSize(new THREE.Vector3());
     txt += `${t("dims.total")}  ${s.x.toFixed(1)} × ${s.y.toFixed(1)} × ${s.z.toFixed(1)} mm`;
-    if (plateCount() === 1 && over.length) txt += "  " + t("dims.toobig");
+    if (plateCount() === 1 && over.length && !S.asm) txt += "  " + t("dims.toobig");
   }
-  if (plateCount() > 1) for (const k of over) txt += "\n" + t("plates.over", { i: k });
+  if (plateCount() > 1 && !S.asm) for (const k of over) txt += "\n" + t("plates.over", { i: k });
   const p = S.selected && S.project.parts.find((q) => q.name === S.selected);
   if (p && p.info.ok) {
     const [x, y, z] = p.info.size;
@@ -324,7 +444,7 @@ function updateClipPlane() {
 
 function setView(v) {
   const b = bbox();
-  if (plateCount() > 1) {  // several beds: frame the shown bed(s), not only the parts on them
+  if (plateCount() > 1 && !S.asm) {  // several beds: frame the shown bed(s), not only the parts on them
     const bed = S.project.bed || [250, 250, 250];
     for (let i = 1; i <= plateCount(); i++) {
       if (S.plate && i !== S.plate) continue;
@@ -639,13 +759,15 @@ function apply(summary, force = false) {
     const first = !S.project || S.project.name !== summary.name;
     S.project = summary;
     if (S.selected && !summary.parts.find((p) => p.name === S.selected)) S.selected = null;
-    await Promise.all(summary.parts.map(loadMesh));
+    await Promise.all([...summary.parts.map(loadMesh), ...(summary.assembly || []).map(loadAsmMesh)]);
     if (S.plate > plateCount()) S.plate = 0;
+    renderAsm();
     renderParams(); renderParts(); renderInspector(force); syncSceneProps(); renderCheckpoints(); renderPlates();
     if (document.activeElement !== $("#notes")) $("#notes").value = summary.notes || "";
     if (document.activeElement !== $("#common")) { $("#common").value = summary.common || ""; S.dirtyCommon = false; $("#commonRun").classList.remove("dirty"); }
     document.title = `CAD-Studio · ${summary.name}`;
     if (first) setView("iso");
+    if (first && location.hash === "#assembly" && asmItems().length) setAsm(true);  // link straight to the assembly
   }).catch((e) => toast(e.message, "err"));
   return applying;
 }
@@ -832,7 +954,9 @@ function connectEvents() {
     const { project, rev } = JSON.parse(ev.data);
     if (project !== lastProj && lastProj !== null) {
       for (const m of S.meshes.values()) partsGroup.remove(m.mesh);
-      S.meshes.clear(); S.selected = null; S.plate = 0; loadProjects();
+      for (const m of asmMeshes.values()) asmGroup.remove(m.mesh);
+      S.meshes.clear(); asmMeshes.clear(); S.selected = null; S.plate = 0;
+      S.asm = false; S.asmHide = new Set(); S.asmGhost = null; loadProjects();
     }
     if (rev !== lastRev || project !== lastProj) {
       lastRev = rev; lastProj = project;

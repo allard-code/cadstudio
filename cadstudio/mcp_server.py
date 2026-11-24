@@ -30,7 +30,7 @@ from .export3mf import export_3mf as _export_3mf
 from .export3mf import export_step as _export_step
 from .export3mf import export_stl as _export_stl
 from .printcheck import find_floating
-from .render import render_png, thin_wall_mask, thumbnail
+from .render import render_assembly_png, render_png, save_assembly_png, thin_wall_mask, thumbnail
 
 CHEATSHEET = (Path(__file__).parent / "cheatsheet.md").read_text(encoding="utf-8")
 WEB_PORT = int(os.environ.get("CADSTUDIO_PORT", "8765"))
@@ -57,6 +57,11 @@ Workflow:
    Or slice_plate(plate=N) for ready-to-print G-code from the bundled OrcaSlicer (printer profile from
    CADSTUDIO_PRINTER); one_filament=True prints the whole plate from a single spool.
    send_to_printer(plate=N) then hands that G-code to Home Assistant, which starts the print (if configured).
+7. Assembly: to show how the printed parts go together, add assembly items with set_assembly_item(name, code)
+   (same build123d code as parts; part("x") and the shared code work) - each item in its assembled position,
+   e.g. a flipped print part rotated back, or reference objects like a motor or rails. They are never exported
+   or sliced. render_assembly() pictures it: ghost=[...] makes a shell see-through, section="x|y|z" cuts it
+   open, explode=1 pulls it apart; export_assembly_png() gives the user a download link.
 User files (STL/3MF from MakerWorld etc.): list_inbox() + import_mesh(file_path), or import_mesh(url=...).
 The server may run on another machine (Docker): paths are server paths, not paths on the user's computer.
 Reply in the user's language. The user watches live in the web editor: {{web_url}}
@@ -487,6 +492,77 @@ def render_preview(view: str = "grid", parts: list[str] | None = None, overhangs
     if errors:
         print("render errors: " + "; ".join(errors), file=sys.stderr)
     return Image(data=png, format="png")
+
+
+# --------------------------------------------------------------------------- assembly tools
+
+def _assembly_report(proj: P.Project, name: str) -> dict:
+    e = proj.build_assembly_item(name)
+    spec = proj.find_assembly_item(name)
+    return {"item": name, "color": spec["color"], "visible": spec["visible"], "ghost": spec["ghost"],
+            "explode": spec["explode"], **{k: v for k, v in e["info"].items() if k != "name"}}
+
+
+@mcp.tool()
+def set_assembly_item(name: str, code: str | None = None, color: str | None = None, visible: bool | None = None,
+                      ghost: bool | None = None, explode: list[float] | None = None, note: str | None = None) -> dict:
+    """Create or change an item of the project's assembly: how the printed parts go together, for pictures
+    (render_assembly) and fit checks - never exported or sliced, not on a build plate.
+    code: build123d code assigning `result` in the ASSEMBLED position (z=0 = the ground / rail top), like a
+    part's code: shared code, parameters and part("name") work (e.g. `result = Pos(0, 0, 25) * Rot(180, 0, 0) *
+    part("deck")` to turn a part printed upside down back over). Use one item per colour / component, also for
+    reference objects that aren't printed (motor, battery, rails). Omit code to change only the other fields.
+    ghost: draw it see-through by default (e.g. the body shell). explode: [dx, dy, dz] mm direction for the
+    exploded view at explode=1 (default: away from the assembly centre); [] resets it."""
+    proj = _proj()
+    fields = {"code": code, "color": color, "visible": visible, "ghost": ghost, "note": note}
+    if explode is not None:
+        fields["explode"] = explode
+    if code is None:
+        proj.find_assembly_item(name)  # only changing properties: the item must exist
+    proj.upsert_assembly_item(name, **fields)
+    return _assembly_report(proj, name)
+
+
+@mcp.tool()
+def delete_assembly_item(name: str) -> dict:
+    """Remove an item from the assembly."""
+    proj = _proj()
+    proj.delete_assembly_item(name)
+    return {"deleted": name, "assembly": [a["name"] for a in proj.assembly]}
+
+
+@mcp.tool()
+def render_assembly(view: str = "iso", items: list[str] | None = None, hide: list[str] | None = None,
+                    ghost: list[str] | None = None, explode: float = 0.0, section: str | None = None,
+                    section_at: float | None = None, section_flip: bool = False) -> Image:
+    """Render the assembly (see set_assembly_item) so you and the user can see how everything goes together.
+    view: grid | iso | front | back | left | right | top | bottom | iso_back.
+    items: only these items; hide: leave these out (default: all visible items).
+    ghost: items drawn see-through, e.g. ["kap"] to look inside the body (default: items marked ghost; [] = none).
+    explode: 0 = assembled; 1 = every item twice as far from the centre (or along its explode vector).
+    section: "x" | "y" | "z" cuts everything at section_at mm (default: the middle) and removes the half facing
+    the viewer (section_flip=True: the other half); cut faces are red."""
+    png, errors = render_assembly_png(_proj(), view=view, items=items, hide=hide, ghost=ghost, explode=explode,
+                                      section=section, section_at=section_at, section_flip=section_flip)
+    if errors:
+        print("render errors: " + "; ".join(errors), file=sys.stderr)
+    return Image(data=png, format="png")
+
+
+@mcp.tool()
+def export_assembly_png(view: str = "iso", items: list[str] | None = None, hide: list[str] | None = None,
+                        ghost: list[str] | None = None, explode: float = 0.0, section: str | None = None,
+                        section_at: float | None = None, section_flip: bool = False, size: int = 1600,
+                        filename: str | None = None) -> dict:
+    """Same picture as render_assembly(), saved as a PNG (default <project>/exports/<project>-assembly-<view>.png)
+    with a download_url to give to the user. size: image width in pixels (400-3000)."""
+    proj = _proj()
+    png, errors = render_assembly_png(proj, view=view, size=max(400, min(3000, int(size))), items=items, hide=hide,
+                                      ghost=ghost, explode=explode, section=section, section_at=section_at,
+                                      section_flip=section_flip)
+    path = save_assembly_png(proj, png, view, filename)
+    return {"path": str(path), "download_url": links.download_url(path), "errors": errors}
 
 
 # --------------------------------------------------------------------------- export tools
