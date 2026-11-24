@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-24
+
 ### Fixed
 - Slicing failed with "orca-slicer-env: Permission denied" when the server runs as a non-root user (PUID): the
   unpacked OrcaSlicer AppImage has owner-only directories (`/opt/orca/libexec` is `drwx------`). The image now
@@ -152,5 +154,6 @@ First public release.
 - MCP server (stdio) with tools for modelling, measuring, rendering previews and exporting.
 - Multi-colour 3MF export for Orca/Bambu/Anycubic and PrusaSlicer, plus STL and STEP.
 
-[Unreleased]: https://github.com/allard-code/cadstudio/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/allard-code/cadstudio/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/allard-code/cadstudio/releases/tag/v0.4.0
 [0.3.0]: https://github.com/allard-code/cadstudio/releases/tag/v0.3.0
