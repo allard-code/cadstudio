@@ -11,6 +11,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Resizing a part in the editor (scale) was silently dropped by the REST API.
 
 ### Added
+- `check_floating()`: slices the exported parts of each build plate into layers (like a slicer) and reports
+  "floating regions" - areas that would print in mid-air because nothing is below them, e.g. a chimney cylinder
+  that starts inside a hollow body or a sphere tip hanging into a cavity. Attached overhangs and bridges are not
+  reported; parts on the same plate support each other. Returns height, size and position per island. The
+  workflow instructions and the `cad-design` skill now tell Claude to run it (and `check_wall_thickness`) before
+  exporting.
 - Build plates (beds). Every part has a `plate` number; a project can have several plates, laid out side by side
   in the same grid as Orca/Bambu/Anycubic Slicer Next. Editor: a bed bar under the viewport ("All beds", "Bed 1",
   "Bed 2", …, ＋ / ✕) to switch the view to one bed (also keys `1`–`9`, `0` = all), a bed selector in the

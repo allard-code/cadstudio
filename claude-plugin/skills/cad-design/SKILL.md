@@ -16,6 +16,8 @@ You work through the `cad-studio` MCP tools on a server (usually a Docker contai
    - read `ok`, `size`, `bbox_min/max` and `watertight` from the `set_part` response;
    - call `render_preview()` and actually look at the image: is the orientation right, is text readable, is the inlay in the right place?
    - fix errors using the traceback before continuing.
+   - before exporting: `check_floating()` (nothing may print in mid-air - the slicer's "floating regions"
+     warning) and `check_wall_thickness()`; fix what they report and run them again.
 5. **Export** with `export_3mf()` (default: one object, one extruder per part). Give the user:
    - the `download_url`;
    - which colour goes in which filament slot (`filament_slots`);

@@ -51,13 +51,15 @@ def test_mcp_round_trip(server):
             async with ClientSession(streams[0], streams[1]) as s:
                 await s.initialize()
                 tools = {t.name for t in (await s.list_tools()).tools}
-                assert {"set_part", "render_preview", "export_3mf", "import_mesh"} <= tools
+                assert {"set_part", "render_preview", "export_3mf", "import_mesh", "check_floating"} <= tools
                 await s.call_tool("new_project", {"name": "e2e"})
                 rep = _text(await s.call_tool("set_part", {"name": "a", "code": "result = Box(10, 10, 10)", "color": "#D62828"}))
                 assert rep["ok"] and rep["watertight"]
                 bad = _text(await s.call_tool("set_part", {"name": "b", "code": "result = Box(1)"}))
                 assert bad["ok"] is False and "traceback" in bad
                 await s.call_tool("delete_part", {"name": "b"})
+                fl = _text(await s.call_tool("check_floating", {}))
+                assert fl["ok"] and fl["plates"]["1"]["floating"] == []
                 img = await s.call_tool("render_preview", {"view": "iso"})
                 assert img.content[0].type == "image"
                 exp = _text(await s.call_tool("export_3mf", {}))

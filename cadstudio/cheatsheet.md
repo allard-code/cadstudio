@@ -115,6 +115,9 @@ result = mesh_boolean("ref", Cylinder(3, 20), "subtract")   # "union" | "subtrac
 ## Printability (FDM, 0.4 nozzle)
 * Wall thickness ≥ 1.2 mm (3 lines), preferably 1.6–2.0. Check with `check_wall_thickness()` - it flags any
   spot thinner than that (default 1.2 mm) and gives you its location.
+* No floating regions: every layer must rest on the layer below (or on the bed). `check_floating()` slices the
+  parts like a slicer and reports islands - e.g. a cylinder that starts inside a hollow body below its ceiling,
+  or a sphere tip hanging into a cavity. Start such features *on* the ceiling instead.
 * Overhang ≤ 45°, otherwise supports, or a chamfer instead of a fillet at the bottom. `render_preview(overhangs=True)`
   highlights those spots.
 * Clearance between separate parts: 0.2–0.3 mm per side.
