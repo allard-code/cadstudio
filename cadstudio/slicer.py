@@ -39,7 +39,8 @@ class SlicerError(RuntimeError):
 
 def orca_binary() -> Path | None:
     env = os.environ.get("CADSTUDIO_ORCA")
-    for p in ([Path(env)] if env else []) + [ORCA_HOME / "bin" / "orca-slicer", ORCA_HOME / "AppRun"]:
+    # AppRun sets up the bundled environment (libexec/orca-slicer-env) before starting bin/orca-slicer
+    for p in ([Path(env)] if env else []) + [ORCA_HOME / "AppRun", ORCA_HOME / "bin" / "orca-slicer"]:
         if p.exists():
             return p
     found = shutil.which("orca-slicer")
@@ -48,7 +49,17 @@ def orca_binary() -> Path | None:
 
 def profiles_dir() -> Path:
     env = os.environ.get("CADSTUDIO_ORCA_PROFILES")
-    return Path(env) if env else ORCA_HOME / "resources" / "profiles"
+    if env:
+        return Path(env)
+    for cand in (ORCA_HOME / "resources" / "profiles", ORCA_HOME / "share" / "OrcaSlicer" / "profiles",
+                 ORCA_HOME / "usr" / "share" / "OrcaSlicer" / "profiles"):
+        if cand.is_dir():
+            return cand
+    if ORCA_HOME.is_dir():
+        for vendor in ORCA_HOME.rglob(DEFAULT_VENDOR):
+            if (vendor / "machine").is_dir():
+                return vendor.parent
+    return ORCA_HOME / "resources" / "profiles"
 
 
 def available() -> bool:

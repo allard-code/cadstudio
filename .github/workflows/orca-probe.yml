@@ -13,7 +13,8 @@ jobs:
           curl -fsSL -o orca.AppImage "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v2.5.2/OrcaSlicer_Linux_AppImage_Ubuntu2404_V2.5.2.AppImage"
           chmod +x orca.AppImage && ./orca.AppImage --appimage-extract >/dev/null
           ls squashfs-root; head -50 squashfs-root/AppRun; ls squashfs-root/bin; du -sh squashfs-root
-          ls squashfs-root/resources/profiles/Anycubic/machine | grep -i "kobra s1"
+          ls squashfs-root/resources | head -40; ls squashfs-root/lib | head -80; ls squashfs-root/libexec; cat squashfs-root/libexec/orca-slicer-env 2>/dev/null | head -40 || file squashfs-root/libexec/orca-slicer-env
+          find squashfs-root -iname "*Kobra S1 0.4 nozzle*" | head; find squashfs-root -iname "*profiles*" -maxdepth 4 | head
       - name: Missing libs in bare python:3.13-slim
         run: |
           docker run --rm -v "$PWD/squashfs-root:/opt/orca" python:3.13-slim bash -c 'for b in /opt/orca/bin/*; do echo "== $b"; LD_LIBRARY_PATH=/opt/orca/lib:/opt/orca/usr/lib ldd "$b" | grep "not found" | sort -u; done'
