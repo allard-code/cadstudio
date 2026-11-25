@@ -180,9 +180,10 @@ def _parse_gcode_stats(gcode: Path) -> dict:
 
 def slice_3mf(model_3mf: Path, out_dir: Path, printer: str = DEFAULT_PRINTER, process: str | None = None,
               filaments: list[str] | None = None, overrides: dict | None = None, vendor: str = DEFAULT_VENDOR,
-              timeout: int = 900) -> dict:
+              timeout: int = 900, settings: dict[str, str] | None = None) -> dict:
     """Slice a single-plate 3MF. filaments: material or preset name per filament slot (1..n) used in the model.
-    Returns {gcode, stats, log}."""
+    settings: process settings already in OrcaSlicer keys/format (printsettings.to_orca), applied before
+    `overrides`. Returns {gcode, stats, log}."""
     exe = orca_binary()
     if exe is None:
         raise SlicerError("OrcaSlicer is not installed in this container (expected under /opt/orca). "
@@ -194,6 +195,7 @@ def slice_3mf(model_3mf: Path, out_dir: Path, printer: str = DEFAULT_PRINTER, pr
         tmp = Path(tmp)
         machine = flatten("machine", printer, vendor)
         proc = flatten("process", process, vendor)
+        proc.update(settings or {})
         for k, v in (overrides or {}).items():
             if v is None:
                 continue

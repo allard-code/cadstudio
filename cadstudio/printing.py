@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from . import links
+from . import printsettings as PS
 from . import project as P
 from .export3mf import export_3mf as _export_3mf
 
@@ -71,8 +72,10 @@ def slice_plate(proj: P.Project, plate: int = 1, materials: list[str] | None = N
                                       "image (ghcr.io/allard-code/cadstudio); a local install needs CADSTUDIO_ORCA."}
     try:
         slots = sorted({int(s["filament"]) for s, _, _ in P.exportable_meshes(proj, None, plate=plate)})
-    except P.PartError as e:
+        here = PS.normalize(overrides)  # this slice only, on top of the project's print settings
+    except (P.PartError, PS.PrintSettingsError) as e:
         return {"ok": False, "error": str(e)}
+    settings = {**PS.project_settings(proj.data), **here}
     fmap = {k: (1 if one_filament else i + 1) for i, k in enumerate(slots)}
     n = 1 if one_filament else len(slots)
     mats = list(materials or [])
@@ -83,9 +86,10 @@ def slice_plate(proj: P.Project, plate: int = 1, materials: list[str] | None = N
     model = out_dir / f"{proj.name}-plate{plate}.3mf"
     printer = printer or slicer.DEFAULT_PRINTER
     try:
-        _export_3mf(proj, model, mode="assembly", flavor="orca", plate=plate, filament_map=fmap)
+        exp = _export_3mf(proj, model, mode="assembly", flavor="orca", plate=plate, filament_map=fmap,
+                          print_settings=settings)
         res = slicer.slice_3mf(model, out_dir, printer=printer, process=process, filaments=mats,
-                               overrides=overrides or {})
+                               settings=PS.to_orca(settings))
     except slicer.SlicerError as e:
         return {"ok": False, "error": str(e)}
     res.pop("log", None)
@@ -101,6 +105,7 @@ def slice_plate(proj: P.Project, plate: int = 1, materials: list[str] | None = N
         if missed:
             res["warnings"] = [f"No layer above {', '.join(f'{h:g}' for h in missed)} mm: those pauses were skipped"]
     res.update({"ok": True, "plate": plate, "download_url": links.download_url(res["gcode"]),
+                "print_settings": exp.get("print_settings", {"object": settings, "parts": {}}),
                 "filament_slots_in_gcode": {str(fmap[k]): f"CAD-Studio slot {k}" for k in slots}
                 if not one_filament else {"1": f"all parts (CAD-Studio slots {slots})"}})
     return res

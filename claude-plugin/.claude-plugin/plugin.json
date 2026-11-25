@@ -1,6 +1,6 @@
 {
   "name": "cad-studio",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Design 3D-printable parts with Claude on your own CAD-Studio server, with export to multi-colour 3MF (Orca / Bambu / Anycubic / Prusa slicers).",
   "author": {
     "name": "allard-code"

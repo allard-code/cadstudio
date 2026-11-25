@@ -77,6 +77,12 @@ Voorbeeldvraag: *"Maak een bakje van 80×50×30 mm met 2 mm wand, afgeronde hoek
   de overlap en speling tussen alle onderdelen, zodat delen die zouden klemmen vooraf opvallen.
 - **Controles:** `check_floating` (zwevende delen), `check_wall_thickness` (dunne wanden) en `check_bridges`
   (te lange overspanningen die doorzakken).
+- **Printvoorbereiding:** `suggest_orientation` bepaalt welke kant op het bed moet (minste support, stevige
+  basis en, als je de belastingsrichting opgeeft, sterkte: geprinte delen zijn het zwakst dwars op de laaglijnen)
+  en kan die oriëntatie meteen toepassen. `set_print_settings` legt printinstellingen vast op basis van waar het
+  onderdeel voor is (profielen `functional`, `strong`, `watertight`, `decorative`, `draft`, `fine`), voor het
+  hele project of per onderdeel. Ze komen als object-/onderdeelinstellingen in de 3MF, dus de slicer opent het
+  bestand er meteen mee, en `slice_plate` gebruikt ze ook.
 - **Hulpfuncties:** in elke onderdeelcode zonder import beschikbaar: `spur_gear`, `gear_centre_distance`,
   `d_hole`, `d_shaft`, `teardrop`, `pin`, `pin_hole`, `screw_boss`, `magnet_pocket` en `tolerance_coupon`
   (proefstrip met ingegraveerde spelingen).

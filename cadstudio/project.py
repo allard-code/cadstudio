@@ -262,6 +262,74 @@ class Project:
                     return
             raise PartError(f"Part '{old}' does not exist")
 
+    def rotate_parts(self, names: list[str], R) -> dict:
+        """Turn a group of parts as one rigid body by rotation matrix R (3x3) about the group's centre, then put
+        the group back on the bed (lowest point z=0) at the same XY centre. Updates every part's location
+        rotation and position; their code is untouched. Returns {part: new location}."""
+        from .orient import euler_from_matrix
+
+        R = np.asarray(R, float)
+        meshes = []
+        for n in names:
+            e = self.build(n)
+            if not e["info"].get("ok"):
+                raise PartError(f"Part '{n}' fails to build: {e['info'].get('error')}")
+            meshes.append(e["mesh"][0])
+        allv = np.vstack(meshes)
+        lo, hi = allv.min(axis=0), allv.max(axis=0)
+        pivot = (lo + hi) / 2
+        rv = (allv - pivot) @ R.T + pivot
+        nlo, nhi = rv.min(axis=0), rv.max(axis=0)
+        shift = np.array([pivot[0] - (nlo[0] + nhi[0]) / 2, pivot[1] - (nlo[1] + nhi[1]) / 2, -nlo[2]])
+        out = {}
+        with LOCK:
+            for n in names:
+                spec = self.find(n)
+                x, y, z, rx, ry, rz = (list(spec.get("location") or [0] * 6) + [0] * 6)[:6]
+                rnew = euler_from_matrix(R @ rot_matrix(rx, ry, rz))
+                pos = R @ (np.array([x, y, z], float) - pivot) + pivot + shift
+                loc = [round(float(v), 4) + 0.0 for v in pos] + rnew
+                for p in self.parts:
+                    if p["name"] == n:
+                        p["location"] = loc
+                out[n] = loc
+            self.save()
+        return out
+
+    # ---- print settings (written into the 3MF and used by slice_plate; see printsettings.py)
+    def set_print_settings(self, part: str | None = None, profile: str | None = None,
+                           overrides: dict | None = None, clear: bool = False) -> dict:
+        """Project-level (part=None) or per-part print settings. profile: a printsettings.PROFILES name
+        ("" removes it); overrides: friendly settings merged into the stored ones (a None value is ignored);
+        clear: drop the stored profile and overrides first. Returns the stored {profile?, overrides}."""
+        from . import printsettings as PS
+
+        part_level = part is not None
+        ov = PS.normalize(overrides, part_level=part_level)
+        if profile:
+            PS.profile_settings(profile, part_level=part_level)  # validates the name
+        with LOCK:
+            if part_level:
+                target = next((p for p in self.parts if p["name"] == part), None)
+                if target is None:
+                    raise PartError(f"Part '{part}' does not exist. Existing parts: {[p['name'] for p in self.parts]}")
+            else:
+                target = self.data
+            cur = {} if clear else dict(target.get("print") or {})
+            cur["overrides"] = {**({} if clear else dict(cur.get("overrides") or {})), **ov}
+            if profile is not None:
+                cur["profile"] = profile.strip().lower()
+            if not cur.get("profile"):
+                cur.pop("profile", None)
+            if not cur["overrides"]:
+                cur.pop("overrides")
+            if cur:
+                target["print"] = cur
+            else:
+                target.pop("print", None)
+            self.save()
+            return dict(cur)
+
     def set_params(self, params: dict, replace: bool = False) -> None:
         with LOCK:
             if replace:
@@ -1076,7 +1144,7 @@ class Project:
             parts.append({**q, "info": infos[p["name"]]["info"]})
         return {"name": self.name, "rev": self.rev, "params": self.params, "notes": self.data.get("notes", ""),
                 "common": self.data.get("common", ""), "presets": self.data.get("presets", {}),
-                "checkpoints": self.list_checkpoints(),
+                "checkpoints": self.list_checkpoints(), "print": self.data.get("print", {}),
                 "parts": parts, "assembly": self.assembly_summary(), "bed": BED, "plates": self.plate_count,
                 "plate_origins": {str(i): plate_origin(i, self.plate_count) for i in range(1, self.plate_count + 1)},
                 "dir": str(self.dir)}
