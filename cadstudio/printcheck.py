@@ -109,6 +109,43 @@ def _components(mask: np.ndarray, max_pixels: int = 400_000) -> list[np.ndarray]
     return comps
 
 
+def _layers(items, layer_height: float, pitch: float):
+    """Slice (name, V, F) items into layers -> yields (k, layers [(name, grid)], cur_all, prev_all, grid frame)."""
+    items = [(n, np.asarray(V, float), np.asarray(F, int)) for n, V, F in items if len(F)]
+    if not items:
+        return
+    allv = np.vstack([V for _, V, _ in items])
+    lo, hi = allv.min(axis=0), allv.max(axis=0)
+    x0, y0 = lo[0] - pitch, lo[1] - pitch
+    nx = int(np.ceil((hi[0] - x0) / pitch)) + 2
+    ny = int(np.ceil((hi[1] - y0) / pitch)) + 2
+    tris = [(n, V[F]) for n, V, F in items]
+    eps = 1e-6
+    prev_all = None
+    k = 0
+    while True:
+        z = (k + 0.5) * layer_height + eps          # sample mid-layer, nudged off exact vertex heights
+        if z > hi[2]:
+            break
+        layers = [(n, _rasterise(_slice_segments(t, z), x0, y0, nx, ny, pitch)) for n, t in tris]
+        cur_all = np.zeros((ny, nx), dtype=bool)
+        for _, g in layers:
+            cur_all |= g
+        yield k, layers, cur_all, prev_all, (x0, y0)
+        prev_all = cur_all if cur_all.any() else None
+        k += 1
+
+
+def _island(comp, layers, x0, y0, pitch) -> dict:
+    r, c = comp[:, 0], comp[:, 1]
+    owner = next((n for n, g in layers if g[r, c].any()), layers[0][0])
+    xs, ys = x0 + (c + 0.5) * pitch, y0 + (r + 0.5) * pitch
+    return {"part": owner, "area_mm2": round(len(comp) * pitch * pitch, 2),
+            "center": [round(float(xs.mean()), 1), round(float(ys.mean()), 1)],
+            "bbox": [round(float(xs.min()), 1), round(float(ys.min()), 1),
+                     round(float(xs.max()), 1), round(float(ys.max()), 1)]}
+
+
 def find_floating(items: list[tuple[str, np.ndarray, np.ndarray]], layer_height: float = 0.2, pitch: float = 0.2,
                   min_area_mm2: float = 0.1, max_reports: int = 50) -> list[dict]:
     """Floating regions of the parts on one build plate.
@@ -117,56 +154,103 @@ def find_floating(items: list[tuple[str, np.ndarray, np.ndarray]], layer_height:
     resting on its base part is fine). Returns a list of islands sorted by height:
     {part, z_mm, area_mm2, center: [x, y], bbox: [xmin, ymin, xmax, ymax]}.
     A part that starts above the bed is reported at its lowest layer."""
-    items = [(n, np.asarray(V, float), np.asarray(F, int)) for n, V, F in items if len(F)]
-    if not items:
-        return []
-    allv = np.vstack([V for _, V, _ in items])
-    lo, hi = allv.min(axis=0), allv.max(axis=0)
-    x0, y0 = lo[0] - pitch, lo[1] - pitch
-    nx = int(np.ceil((hi[0] - x0) / pitch)) + 2
-    ny = int(np.ceil((hi[1] - y0) / pitch)) + 2
-    tris = [(n, V[F]) for n, V, F in items]
-    zmax = hi[2]
-    eps = 1e-6
-    prev_all = None
     found: list[dict] = []
-    k = 0
-    while True:
-        z = (k + 0.5) * layer_height + eps          # sample mid-layer, nudged off exact vertex heights
-        if z > zmax:
-            break
-        layers = [(n, _rasterise(_slice_segments(t, z), x0, y0, nx, ny, pitch)) for n, t in tris]
-        cur_all = np.zeros((ny, nx), dtype=bool)
-        for _, g in layers:
-            cur_all |= g
-        if cur_all.any():
-            if k == 0:
-                supported = cur_all                          # first layer rests on the bed
-            elif prev_all is None:
-                supported = np.zeros_like(cur_all)
-            else:
-                # morphological reconstruction: start from what overlaps the layer below, grow within this layer
-                supported = cur_all & prev_all
-                while True:
-                    grown = _dilate(supported) & cur_all
-                    if (grown == supported).all():
-                        break
-                    supported = grown
-            loose = cur_all & ~supported
-            if loose.any():
-                for comp in _components(loose):
-                    area = len(comp) * pitch * pitch
-                    if area < min_area_mm2:
-                        continue
-                    r, c = comp[:, 0], comp[:, 1]
-                    owner = next((n for n, g in layers if g[r, c].any()), layers[0][0])
-                    xs, ys = x0 + (c + 0.5) * pitch, y0 + (r + 0.5) * pitch
-                    found.append({"part": owner, "z_mm": round(k * layer_height, 2), "area_mm2": round(area, 2),
-                                  "center": [round(float(xs.mean()), 1), round(float(ys.mean()), 1)],
-                                  "bbox": [round(float(xs.min()), 1), round(float(ys.min()), 1),
-                                           round(float(xs.max()), 1), round(float(ys.max()), 1)]})
-                    if len(found) >= max_reports:
-                        return found
-        prev_all = cur_all if cur_all.any() else None
-        k += 1
+    for k, layers, cur_all, prev_all, (x0, y0) in _layers(items, layer_height, pitch):
+        if not cur_all.any():
+            continue
+        if k == 0:
+            supported = cur_all                          # first layer rests on the bed
+        elif prev_all is None:
+            supported = np.zeros_like(cur_all)
+        else:
+            # morphological reconstruction: start from what overlaps the layer below, grow within this layer
+            supported = cur_all & prev_all
+            while True:
+                grown = _dilate(supported) & cur_all
+                if (grown == supported).all():
+                    break
+                supported = grown
+        loose = cur_all & ~supported
+        if not loose.any():
+            continue
+        for comp in _components(loose):
+            if len(comp) * pitch * pitch < min_area_mm2:
+                continue
+            found.append({"z_mm": round(k * layer_height, 2), **_island(comp, layers, x0, y0, pitch)})
+            if len(found) >= max_reports:
+                return found
     return found
+
+
+def _runs(line: np.ndarray):
+    """(start, end) index pairs (end exclusive) of True runs in a 1-D bool array."""
+    d = np.diff(np.r_[0, line.astype(np.int8), 0])
+    return zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1))
+
+
+def _spans(un: np.ndarray, anchor: np.ndarray) -> tuple[int, int]:
+    """Longest run (pixels) of unsupported cells along the rows of `un` that is held by printed material on both
+    ends (a bridge), and longest held on one end only (a cantilever overhang)."""
+    bridge = over = 0
+    n = un.shape[1]
+    for i in np.flatnonzero(un.any(axis=1)):
+        for a, b in _runs(un[i]):
+            left = a > 0 and anchor[i, a - 1]
+            right = b < n and anchor[i, b]
+            if left and right:
+                bridge = max(bridge, b - a)
+            elif left or right:
+                over = max(over, b - a)
+    return bridge, over
+
+
+def find_bridges(items: list[tuple[str, np.ndarray, np.ndarray]], layer_height: float = 0.2, pitch: float = 0.2,
+                 max_bridge_mm: float = 20.0, max_overhang_mm: float = 1.0, min_area_mm2: float = 1.0,
+                 max_reports: int = 50) -> dict:
+    """Bridges and overhangs of the parts on one build plate, with their span.
+
+    A cell of a layer is unsupported when nothing lies under it or right next to it in the layer below (one cell
+    of slack, so 45-degree slopes count as supported). Each unsupported region gets its span: the slicer
+    bridges in the shortest direction, so a region's bridge span is the shorter of its longest anchored runs
+    along X and along Y. Regions held on one side only are overhangs (a ledge sticking out). Regions with no
+    support at all are floating (see find_floating) and skipped here.
+    Returns {"longest_bridge": {part: mm}, "issues": [{part, kind, span_mm, z_mm, area_mm2, center, bbox}]}:
+    bridges longer than max_bridge_mm and overhangs longer than max_overhang_mm."""
+    issues: list[dict] = []
+    longest: dict[str, float] = {}
+    for k, layers, cur_all, prev_all, (x0, y0) in _layers(items, layer_height, pitch):
+        if k == 0 or prev_all is None or not cur_all.any():
+            continue
+        un = cur_all & ~_dilate(prev_all)
+        if not un.any():
+            continue
+        anchor = cur_all & ~un
+        for comp in _components(un):
+            if len(comp) * pitch * pitch < min_area_mm2:
+                continue
+            r0, c0 = comp.min(axis=0)
+            r1, c1 = comp.max(axis=0) + 1
+            box_un = np.zeros((r1 - r0 + 2, c1 - c0 + 2), dtype=bool)
+            box_un[comp[:, 0] - r0 + 1, comp[:, 1] - c0 + 1] = True
+            ra, rb = max(r0 - 1, 0), min(r1 + 1, cur_all.shape[0])
+            ca, cb = max(c0 - 1, 0), min(c1 + 1, cur_all.shape[1])
+            box_an = np.zeros_like(box_un)
+            box_an[ra - r0 + 1:rb - r0 + 1, ca - c0 + 1:cb - c0 + 1] = anchor[ra:rb, ca:cb]
+            bx, ox = _spans(box_un, box_an)
+            by, oy = _spans(box_un.T, box_an.T)
+            info = _island(comp, layers, x0, y0, pitch)
+            bridge = [v for v in (bx, by) if v]
+            if bridge:
+                span = float(min(bridge) * pitch)
+                longest[info["part"]] = round(max(longest.get(info["part"], 0.0), span), 1)
+                if span > max_bridge_mm:
+                    issues.append({"kind": "bridge", "span_mm": round(span, 1), "z_mm": round(k * layer_height, 2),
+                                   **info})
+            elif ox or oy:
+                span = float(min(v for v in (ox, oy) if v) * pitch)
+                if span > max_overhang_mm:
+                    issues.append({"kind": "overhang", "span_mm": round(span, 1),
+                                   "z_mm": round(k * layer_height, 2), **info})
+            if len(issues) >= max_reports:
+                return {"longest_bridge": longest, "issues": issues, "truncated": True}
+    return {"longest_bridge": longest, "issues": issues}

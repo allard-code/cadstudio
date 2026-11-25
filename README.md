@@ -115,8 +115,8 @@ Example prompts:
 | Projects | `list_projects`, `new_project`, `open_project`, `get_project`, `set_notes` |
 | Modelling | `set_params`, `set_part`, `update_part`, `add_primitive`, `delete_part` |
 | Build plates | `add_plate`, `remove_plate`, `arrange_plates` (and `plate` on `set_part` / `update_part`) |
-| Inspecting | `measure`, `render_preview`, `check_floating`, `check_wall_thickness` |
-| Assembly | `set_assembly_item`, `delete_assembly_item`, `render_assembly`, `export_assembly_png` |
+| Inspecting | `measure`, `render_preview`, `check_floating`, `check_wall_thickness`, `check_bridges` |
+| Assembly | `set_assembly_item`, `delete_assembly_item`, `render_assembly`, `export_assembly_png`, `check_assembly_fit` |
 | Import | `list_inbox`, `import_mesh` (inbox file or URL) |
 | Export | `export_3mf`, `export_stl`, `export_step` (each with a download link) |
 | Printing | `slice_plate` (G-code with the bundled OrcaSlicer), `send_to_printer` (hand it to Home Assistant) |
@@ -146,6 +146,13 @@ part's position is relative to the centre of its own bed. *Export 3MF* puts ever
 slicer plates (Orca flavour), or, with "1 file per bed", writes one 3MF per bed — use that for PrusaSlicer, which
 has no plates.
 
+### Print helpers
+
+Every part's code can use ready-made helpers for functional prints, without importing: `spur_gear` and
+`gear_centre_distance`, `d_hole` / `d_shaft`, `teardrop` (horizontal holes without support), `pin` / `pin_hole`,
+`screw_boss`, `magnet_pocket` (a cavity to enclose a magnet during a print pause) and `tolerance_coupon` (a small
+test strip with engraved clearances: print it once and use the clearance that fits best).
+
 ### Assembly view
 
 Show how the printed parts go together. Claude adds assembly items with `set_assembly_item(name, code)`: the same
@@ -159,6 +166,7 @@ exported, sliced or arranged.
 - In the editor, the *⚙ Assembly* button below the view shows the assembly instead of the build plates: show /
   see-through per item, an *Explode* slider, the *Section* tool, and *Picture (PNG)* to download the current view.
   `http://…/#assembly` opens the editor straight in this view.
+- `check_assembly_fit` measures overlap and clearance between all items, so parts that would jam show up first.
 
 ### Printing via Home Assistant
 

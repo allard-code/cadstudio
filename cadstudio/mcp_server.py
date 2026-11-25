@@ -29,7 +29,8 @@ from . import project as P
 from .export3mf import export_3mf as _export_3mf
 from .export3mf import export_step as _export_step
 from .export3mf import export_stl as _export_stl
-from .printcheck import find_floating
+from .fitcheck import check_fit
+from .printcheck import find_bridges, find_floating
 from .render import render_assembly_png, render_png, save_assembly_png, thin_wall_mask, thumbnail
 
 CHEATSHEET = (Path(__file__).parent / "cheatsheet.md").read_text(encoding="utf-8")
@@ -62,6 +63,10 @@ Workflow:
    e.g. a flipped print part rotated back, or reference objects like a motor or rails. They are never exported
    or sliced. render_assembly() pictures it: ghost=[...] makes a shell see-through, section="x|y|z" cuts it
    open, explode=1 pulls it apart; export_assembly_png() gives the user a download link.
+   check_assembly_fit() measures overlap and clearance between all items (too tight = jams when printed).
+Before exporting also run check_bridges(): long unsupported spans sag (keep bridges under ~15-20 mm).
+Ready-made helpers in every part's code: spur_gear, gear_centre_distance, d_hole, d_shaft, teardrop, pin,
+pin_hole, screw_boss, magnet_pocket, tolerance_coupon (see get_build123d_reference()).
 User files (STL/3MF from MakerWorld etc.): list_inbox() + import_mesh(file_path), or import_mesh(url=...).
 The server may run on another machine (Docker): paths are server paths, not paths on the user's computer.
 Reply in the user's language. The user watches live in the web editor: {{web_url}}
@@ -454,7 +459,19 @@ def check_floating(plate: int | None = None, layer_height_mm: float = 0.2, pitch
     the same plate support each other (inlays/multi-colour are fine). plate: only that plate (default: all).
     Returns per plate a list of islands {part, z_mm, area_mm2, center [x, y], bbox} (plate coordinates),
     lowest first; an empty list means the plate prints without floating regions."""
-    proj = _proj()
+    by_plate, skipped = _plate_meshes(_proj(), plate)
+    plates = {}
+    for k in sorted(by_plate):
+        islands = find_floating(by_plate[k], layer_height=layer_height_mm, pitch=pitch_mm, min_area_mm2=min_area_mm2)
+        plates[str(k)] = {"parts": [n for n, _, _ in by_plate[k]], "floating": islands, "ok": not islands}
+    res: dict[str, Any] = {"layer_height_mm": layer_height_mm, "plates": plates,
+                           "ok": all(v["ok"] for v in plates.values())}
+    if skipped:
+        res["skipped"] = skipped
+    return res
+
+
+def _plate_meshes(proj: P.Project, plate: int | None):
     by_plate: dict[int, list] = {}
     skipped = []
     for p in proj.parts:
@@ -467,15 +484,42 @@ def check_floating(plate: int | None = None, layer_height_mm: float = 0.2, pitch
             continue
         V, F = e["mesh"]
         by_plate.setdefault(int(s["plate"]), []).append((s["name"], V, F))
+    return by_plate, skipped
+
+
+@mcp.tool()
+def check_bridges(plate: int | None = None, max_bridge_mm: float = 20.0, max_overhang_mm: float = 1.0,
+                  layer_height_mm: float = 0.2, pitch_mm: float = 0.2) -> dict:
+    """Find long bridges and overhangs - spans printed over air, attached at the ends (a ceiling, the top of a
+    window) or at one side (a ledge). Long spans sag and string: on a typical printer bridges up to ~15 mm are
+    clean, 15-25 mm sag a little, longer ones need a different shape (45-degree chamfers that narrow the flat
+    part, a support rib, or printing the part another way up). 45-degree slopes count as supported.
+    Slices every exported part like a slicer, per build plate. Returns per plate the longest bridge per part
+    and the issues {part, kind: bridge|overhang, span_mm, z_mm, area_mm2, center, bbox} beyond the limits.
+    Floating regions (no support at all) are reported by check_floating instead."""
+    by_plate, skipped = _plate_meshes(_proj(), plate)
     plates = {}
     for k in sorted(by_plate):
-        islands = find_floating(by_plate[k], layer_height=layer_height_mm, pitch=pitch_mm, min_area_mm2=min_area_mm2)
-        plates[str(k)] = {"parts": [n for n, _, _ in by_plate[k]], "floating": islands, "ok": not islands}
-    res: dict[str, Any] = {"layer_height_mm": layer_height_mm, "plates": plates,
+        r = find_bridges(by_plate[k], layer_height=layer_height_mm, pitch=pitch_mm, max_bridge_mm=max_bridge_mm,
+                         max_overhang_mm=max_overhang_mm)
+        plates[str(k)] = {"parts": [n for n, _, _ in by_plate[k]], **r, "ok": not r["issues"]}
+    res: dict[str, Any] = {"max_bridge_mm": max_bridge_mm, "max_overhang_mm": max_overhang_mm, "plates": plates,
                            "ok": all(v["ok"] for v in plates.values())}
     if skipped:
         res["skipped"] = skipped
     return res
+
+
+@mcp.tool()
+def check_assembly_fit(items: list[str] | None = None, allow: list[list[str]] | None = None,
+                       min_clearance: float = 0.3) -> dict:
+    """Check how the assembly fits together: for every pair of assembly items that come close, the overlap
+    (mm3, the solids intersect - they can't both be there) or the smallest gap. A gap below min_clearance
+    (default 0.3 mm) usually closes up when printed: the parts jam. Pairs that are meant to touch or press
+    (a pin in its hole, a part resting on another) go in allow, e.g. [["leg*", "deck"], ["kap", "deck"]]
+    (* wildcards). Returns ok, issues (overlap / touch / tight, worst first) and all measured pairs.
+    Split an assembly into one item per physical component so every fit gets checked."""
+    return check_fit(_proj(), items=items, allow=allow, min_clearance=min_clearance)
 
 
 @mcp.tool()

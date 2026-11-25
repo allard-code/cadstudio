@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-25
+
+### Added
+- `check_assembly_fit`: overlap and clearance between every pair of assembly items that come close; flags parts
+  that overlap or sit closer than `min_clearance` (default 0.3 mm, a gap that closes up when printed). Pairs that
+  are meant to touch or press go in `allow` (with `*` wildcards).
+- `check_bridges`: slices each build plate and reports the longest bridge per part plus bridges and overhangs
+  beyond `max_bridge_mm` / `max_overhang_mm` (45-degree slopes count as supported), so a sagging ceiling shows up
+  before printing.
+- Print helpers available in every part's code without importing: `spur_gear`, `gear_centre_distance`, `d_hole`,
+  `d_shaft`, `teardrop`, `pin`, `pin_hole`, `screw_boss`, `magnet_pocket` and `tolerance_coupon` (a test strip with
+  engraved clearances to measure what your printer needs). Functions of the same name in your shared code win.
+
 ## [0.5.0] - 2026-11-24
 
 ### Added

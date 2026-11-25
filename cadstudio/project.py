@@ -821,6 +821,9 @@ class Project:
         ns: dict[str, Any] = {}
         exec("from build123d import *", ns)
         ns.update(math=math, np=np, Path=Path, params=dict(self.params), PROJECT_DIR=self.dir)
+        from . import lib as _lib  # print helpers (gears, D-holes, teardrops, magnet pockets, ...)
+
+        ns.update({k: getattr(_lib, k) for k in _lib.__all__}, lib=_lib)
         ns.update(self.params)
 
         def part(ref: str):

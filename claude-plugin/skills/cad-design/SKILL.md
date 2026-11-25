@@ -17,7 +17,7 @@ You work through the `cad-studio` MCP tools on a server (usually a Docker contai
    - call `render_preview()` and actually look at the image: is the orientation right, is text readable, is the inlay in the right place?
    - fix errors using the traceback before continuing.
    - before exporting: `check_floating()` (nothing may print in mid-air - the slicer's "floating regions"
-     warning) and `check_wall_thickness()`; fix what they report and run them again.
+     warning), `check_wall_thickness()` and `check_bridges()` (long spans sag); fix what they report and run them again.
 5. **Export** with `export_3mf()` (default: one object, one extruder per part). Give the user:
    - the `download_url`;
    - which colour goes in which filament slot (`filament_slots`);
@@ -29,7 +29,11 @@ When several printed parts go together (a body on a chassis, wheels on axles), d
 see the end result: one `set_assembly_item(name, code, color)` per component, in the assembled position (rotate parts
 printed upside down back; add reference objects like a motor or rails too). Check it with `render_assembly()`
 (`ghost=["body"]` to look inside, `section="y"` to cut it open, `explode=1` for an exploded view) and give the user a
-picture with `export_assembly_png()`. Assembly items are never exported or sliced.
+picture with `export_assembly_png()`. Run `check_assembly_fit()` (one item per physical component) to catch
+parts that overlap or jam. Assembly items are never exported or sliced.
+
+Use the built-in helpers (`spur_gear`, `d_hole`, `teardrop`, `pin_hole`, `screw_boss`, `magnet_pocket`, ...)
+instead of writing them again, and offer a `tolerance_coupon()` before a design with tight fits.
 
 ## Multi-colour (AMS / ACE Pro / MMU)
 
