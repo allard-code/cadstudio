@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-25
+
+### Added
+- `suggest_orientation`: ranks which side of a part (or of all parts on a plate, turned together as one rigid
+  group) should face the bed - the current orientation, the six axis directions and the largest flat faces -
+  on support area, bed contact, height and, with `load_direction`, strength (printed parts are weakest across
+  the layer lines). `apply=<rank>` turns the group about its centre and puts it back on the bed; only the parts'
+  location changes, their code stays as it is.
+- Print settings that travel with the design: `set_print_settings` stores a profile chosen from what the part is
+  for (`functional`, `strong`, `watertight`, `decorative`, `draft`, `fine`, `standard`) plus overrides (layer
+  height, walls, top/bottom layers, infill density and pattern, supports and support type, brim), for the whole
+  project or per part (walls/infill/shells only, e.g. a strong body with a decorative inlay).
+- Exported 3MF files carry these settings as per-object / per-part settings, so Anycubic Slicer Next, OrcaSlicer,
+  Bambu Studio (`Metadata/model_settings.config`) and PrusaSlicer (`Slic3r_PE_model.config`) open the file with
+  them applied. `export_3mf` reports the settings it wrote.
+- `slice_plate` uses the project's print settings, takes `infill_pattern` and `support_type` too, and returns the
+  settings it sliced with.
+
 ## [0.7.0] - 2026-11-25
 
 ### Added

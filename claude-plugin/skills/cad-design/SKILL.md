@@ -18,7 +18,14 @@ You work through the `cad-studio` MCP tools on a server (usually a Docker contai
    - fix errors using the traceback before continuing.
    - before exporting: `check_floating()` (nothing may print in mid-air - the slicer's "floating regions"
      warning), `check_wall_thickness()` and `check_bridges()` (long spans sag); fix what they report and run them again.
-5. **Export** with `export_3mf()` (default: one object, one extruder per part). Give the user:
+5. **Prepare the print** (ask how the part is used if you don't know: what loads it, must it seal, is it seen):
+   - `suggest_orientation(load_direction=...)` - pick the side that faces the bed; layer lines are the weak
+     direction, so a part that is pulled or bent should have the load running along the layers. Apply with
+     `apply=<rank>`, then run `render_preview()`, `check_floating()` and `check_bridges()` again.
+   - `set_print_settings(profile=...)` - `functional` / `strong` / `watertight` / `decorative` / `draft` / `fine`,
+     plus overrides; per part for e.g. a decorative inlay on a strong body. The settings go into the 3MF.
+   - tell the user in two lines which orientation and settings you chose and why.
+6. **Export** with `export_3mf()` (default: one object, one extruder per part). Give the user:
    - the `download_url`;
    - which colour goes in which filament slot (`filament_slots`);
    - any `warnings` (e.g. more than 4 slots).

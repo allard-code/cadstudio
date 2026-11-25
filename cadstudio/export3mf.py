@@ -26,6 +26,7 @@ from xml.sax.saxutils import escape, quoteattr
 
 import numpy as np
 
+from . import printsettings as PS
 from .project import BED, PartError, Project, exportable_meshes, mesh_volume, plate_origin, slugify
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
@@ -97,6 +98,17 @@ def _place_plates(items, count: int):
     return [placed[s["name"]] for s, _, _ in items], warnings, sorted(by_plate)
 
 
+def _settings_xml(settings: dict[str, str], indent: str, attrs: str = "") -> str:
+    """Print settings as <metadata> lines (Orca/Bambu: plain key; PrusaSlicer: type="object"/"volume")."""
+    return "".join(f'{indent}<metadata {attrs}key={quoteattr(k)} value={quoteattr(v)}/>\n' for k, v in settings.items())
+
+
+def _prusa(settings: dict, part_level: bool, warnings: list[str]) -> dict[str, str]:
+    out, warn = PS.to_prusa(settings, part_level=part_level)
+    warnings += [w for w in warn if w not in warnings]
+    return out
+
+
 def _slot_warnings(items) -> list[str]:
     w, cols = [], {}
     for s, _, _ in items:
@@ -113,9 +125,12 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
                only: list[str] | None = None, object_name: str | None = None, thumbnail: bytes | None = None,
                filament_density_g_cm3: float = 1.24, filament_price_eur_kg: float | None = None,
                print_rate_cm3_per_hour: float | None = 15.0, plate: int | None = None,
-               split_plates: bool = False, filament_map: dict[int, int] | None = None) -> dict:
+               split_plates: bool = False, filament_map: dict[int, int] | None = None,
+               print_settings: dict | None = None) -> dict:
     """plate: export only that plate (centred on a single bed). split_plates: one file per plate.
-    filament_map: renumber filament slots in the file, e.g. {1: 1, 2: 1} prints everything with filament 1."""
+    filament_map: renumber filament slots in the file, e.g. {1: 1, 2: 1} prints everything with filament 1.
+    print_settings: object-level print settings (friendly names, see printsettings.FIELDS); default: the
+    project's own (profile + overrides). Per-part settings always come from the parts."""
     path = Path(path) if path else proj.dir / "exports" / f"{proj.name}.3mf"
     if path.suffix.lower() != ".3mf":
         path = path.with_suffix(".3mf")
@@ -128,7 +143,7 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
                                       thumbnail=thumbnail, filament_density_g_cm3=filament_density_g_cm3,
                                       filament_price_eur_kg=filament_price_eur_kg,
                                       print_rate_cm3_per_hour=print_rate_cm3_per_hour, plate=k,
-                                      filament_map=filament_map))
+                                      filament_map=filament_map, print_settings=print_settings))
         out = {"paths": [r["path"] for r in results], "flavor": flavor, "mode": mode,
                "plates": {str(k): r for k, r in zip(used, results)},
                "warnings": [w for r in results for w in r["warnings"]],
@@ -151,6 +166,8 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
                         "Use split_plates (one file per plate) instead.")
     path.parent.mkdir(parents=True, exist_ok=True)
     object_name = object_name or proj.name
+    obj_ps = PS.normalize(print_settings) if print_settings is not None else PS.project_settings(proj.data)
+    part_ps = {s["name"]: PS.part_settings(s) for s, _, _ in items}
 
     # material table: one entry per part colour
     colors = []
@@ -189,10 +206,13 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
                 f'  <volume firstid="{a}" lastid="{b}">\n'
                 f'   <metadata type="volume" key="name" value={quoteattr(s["name"])}/>\n'
                 f'   <metadata type="volume" key="extruder" value="{int(s["filament"])}"/>\n'
-                f'  </volume>' for s, a, b in vols)
+                + _settings_xml(_prusa(part_ps[s["name"]], True, warnings), "   ", 'type="volume" ')
+                + '  </volume>' for s, a, b in vols)
             cfg.append(f' <object id="{oid}" instances_count="1">\n'
                        f'  <metadata type="object" key="name" value={quoteattr(name)}/>\n'
-                       f'  <metadata type="object" key="extruder" value="{int(grp[0][0]["filament"])}"/>\n{vx}\n </object>')
+                       f'  <metadata type="object" key="extruder" value="{int(grp[0][0]["filament"])}"/>\n'
+                       + _settings_xml(_prusa(obj_ps, False, warnings), "  ", 'type="object" ')
+                       + f'{vx}\n </object>')
             oid += 1
         cfg_name = "Metadata/Slic3r_PE_model.config"
         cfg_xml = '<?xml version="1.0" encoding="UTF-8"?>\n<config>\n' + "\n".join(cfg) + "\n</config>\n"
@@ -224,10 +244,13 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
                 f'   <metadata key="name" value={quoteattr(s["name"])}/>\n'
                 f'   <metadata key="matrix" value="{IDENTITY}"/>\n'
                 f'   <metadata key="extruder" value="{int(s["filament"])}"/>\n'
-                f'  </part>' for pid, s in grp)
+                + _settings_xml(PS.to_orca(part_ps[s["name"]], part_level=True), "   ")
+                + '  </part>' for pid, s in grp)
             cfg.append(f' <object id="{oid}">\n'
                        f'  <metadata key="name" value={quoteattr(name)}/>\n'
-                       f'  <metadata key="extruder" value="{int(grp[0][1]["filament"])}"/>\n{parts_cfg}\n </object>')
+                       f'  <metadata key="extruder" value="{int(grp[0][1]["filament"])}"/>\n'
+                       + _settings_xml(PS.to_orca(obj_ps), "  ")
+                       + f'{parts_cfg}\n </object>')
             oid += 1
         for k in range(1, count + 1):  # plate membership (Orca/Bambu); empty plates are kept as empty plates
             insts = "\n".join(
@@ -270,6 +293,8 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
               # is an upper bound for anything printed below 100% infill (which is most prints)
               "filament_g_solid_estimate": {str(k): round(v, 1) for k, v in sorted(grams_per_slot.items())},
               "total_g_solid_estimate": round(total_g, 1)}
+    if obj_ps or any(part_ps.values()):
+        result["print_settings"] = {"object": obj_ps, "parts": {k: v for k, v in part_ps.items() if v}}
     if filament_price_eur_kg is not None:
         result["cost_eur_solid_estimate"] = round(total_g / 1000 * filament_price_eur_kg, 2)
     if print_rate_cm3_per_hour:
