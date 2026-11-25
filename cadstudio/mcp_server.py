@@ -25,6 +25,7 @@ except ImportError:  # MCP Python SDK 1.x
     from mcp.server.fastmcp import Image
 
 from . import links
+from . import printsettings as PS
 from . import project as P
 from .export3mf import export_3mf as _export_3mf
 from .export3mf import export_step as _export_step
@@ -65,6 +66,11 @@ Workflow:
    open, explode=1 pulls it apart; export_assembly_png() gives the user a download link.
    check_assembly_fit() measures overlap and clearance between all items (too tight = jams when printed).
 Before exporting also run check_bridges(): long unsupported spans sag (keep bridges under ~15-20 mm).
+Print preparation: suggest_orientation() picks the side that faces the bed (least support, good base, and
+strength when you give the load direction - layer lines are the weak direction); set_print_settings() stores
+walls/infill/layer height chosen from what the part is for (profiles functional | strong | watertight |
+decorative | draft | fine) - they go into the 3MF and slice_plate. Tell the user the orientation and settings
+you chose and why.
 Ready-made helpers in every part's code: spur_gear, gear_centre_distance, d_hole, d_shaft, teardrop, pin,
 pin_hole, screw_boss, magnet_pocket, tolerance_coupon (see get_build123d_reference()).
 User files (STL/3MF from MakerWorld etc.): list_inbox() + import_mesh(file_path), or import_mesh(url=...).
@@ -511,6 +517,60 @@ def check_bridges(plate: int | None = None, max_bridge_mm: float = 20.0, max_ove
 
 
 @mcp.tool()
+def suggest_orientation(plate: int | None = None, parts: list[str] | None = None,
+                        load_direction: str | list[float] | None = None, overhang_angle: float = 45.0,
+                        apply: int | None = None, count: int = 3) -> dict:
+    """Find the best way up to print: which side faces the bed. The parts are treated as ONE rigid group
+    (default: all exported parts on `plate`, default plate 1 - so a multi-colour inlay turns with its body;
+    or the given `parts`). Candidates: the current orientation, the six axis directions and the largest flat
+    faces. Each is scored on support area (downward faces steeper than overhang_angle, not on the bed), bed
+    contact (flat base: adhesion, no tipping), height, and - if load_direction is given - strength: printed
+    parts split along the layer lines, so a load that pulls the layers apart is the weakest case.
+    load_direction: the main load in the current model frame, "x" | "y" | "z" or a vector (e.g. a hook pulled
+    along its length -> that axis); ask yourself how the part is used before choosing.
+    apply: rank number of a candidate to apply (rotates the group about its centre and puts it back on the
+    bed; the part code is untouched, only location changes). Without apply nothing changes.
+    Returns current metrics and the best `count` candidates {rank, label, rotation_deg, support_area_mm2,
+    support_pct_of_surface, bed_contact_mm2, height_mm, footprint_mm, load_across_layers, score (lower =
+    better)}. After applying: render_preview, check_floating and check_bridges again (a new floor can create
+    new bridges), and set_print_settings(supports=True) if the chosen side still needs support."""
+    from . import orient as O
+    proj = _proj()
+    try:
+        if parts:
+            names = [proj.find(n)["name"] for n in parts]
+        else:
+            k = int(plate or 1)
+            names = [p["name"] for p in proj.parts if {**P.PART_DEFAULTS, **p}["export"]
+                     and int(p.get("plate", 1)) == k]
+            if not names:
+                return {"ok": False, "error": f"No exported parts on plate {k}"}
+        Vs, Fs, off = [], [], 0
+        for n in names:
+            e = proj.build(n)
+            if not e["info"].get("ok"):
+                return {"ok": False, "error": f"Part '{n}' fails to build: {e['info'].get('error')}"}
+            V, F = e["mesh"]
+            Vs.append(V)
+            Fs.append(F + off)
+            off += len(V)
+        res = O.suggest(np.vstack(Vs), np.vstack(Fs), overhang_angle=overhang_angle, load=load_direction,
+                        count=max(1, int(count)))
+    except (P.PartError, ValueError) as e:
+        return {"ok": False, "error": str(e)}
+    out: dict[str, Any] = {"ok": True, "parts": names, "current": res["current"],
+                           "candidates": [{k: v for k, v in r.items() if k != "_R"} for r in res["candidates"]]}
+    if apply is not None:
+        pick = next((r for r in res["all"] if r["rank"] == int(apply)), None)
+        if pick is None:
+            return {**out, "ok": False, "error": f"No candidate with rank {apply}"}
+        out["applied"] = {"rank": pick["rank"], "label": pick["label"],
+                          "locations": proj.rotate_parts(names, pick["_R"])}
+        out["next"] = "render_preview(), check_floating() and check_bridges() to confirm the new orientation"
+    return out
+
+
+@mcp.tool()
 def check_assembly_fit(items: list[str] | None = None, allow: list[list[str]] | None = None,
                        min_clearance: float = 0.3) -> dict:
     """Check how the assembly fits together: for every pair of assembly items that come close, the overlap
@@ -644,20 +704,66 @@ def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str 
 
 
 @mcp.tool()
+def set_print_settings(part: str | None = None, profile: str | None = None, layer_height_mm: float | None = None,
+                       wall_loops: int | None = None, top_layers: int | None = None, bottom_layers: int | None = None,
+                       infill_percent: float | None = None, infill_pattern: str | None = None,
+                       supports: bool | None = None, support_type: str | None = None,
+                       brim_width_mm: float | None = None, clear: bool = False) -> dict:
+    """Store print settings with the design. They are written into every exported 3MF as per-object / per-part
+    settings (the slicer opens the file with them applied) and slice_plate uses them. Choose them from what the
+    part is FOR - load, wear, watertightness, looks - and say why in one line to the user.
+    part=None: settings for the whole project (every object); part="name": settings for one part only (e.g. a
+    strong body with a decorative inlay) - per part only walls, top/bottom layers and infill are possible.
+    profile: functional (brackets, holders, clips: 4 walls, 30% gyroid) | strong (load-bearing, hinges: 6 walls,
+    50% gyroid) | watertight (ducts, containers: 5 walls, extra top/bottom) | decorative (2 walls, 10%) |
+    draft (0.28 mm fit test) | fine (0.12 mm detail) | standard (slicer defaults); "" removes the profile.
+    Other arguments override single values on top of the profile: infill_pattern e.g. gyroid | grid | cubic |
+    honeycomb | lightning | rectilinear | concentric; support_type normal | tree. Values you leave out stay as
+    stored; clear=True starts from scratch. Call with no arguments to read the current settings.
+    Layer lines are the weak direction: also check the orientation (suggest_orientation) for loaded parts.
+    Returns the stored settings and the effective settings per level."""
+    proj = _proj()
+    overrides = {"layer_height_mm": layer_height_mm, "wall_loops": wall_loops, "top_layers": top_layers,
+                 "bottom_layers": bottom_layers, "infill_percent": infill_percent, "infill_pattern": infill_pattern,
+                 "supports": supports, "support_type": support_type, "brim_width_mm": brim_width_mm}
+    try:
+        if profile is not None or clear or any(v is not None for v in overrides.values()):
+            proj.set_print_settings(part=part, profile=profile, overrides=overrides, clear=clear)
+        elif part is not None:
+            proj.find(part)
+    except (PS.PrintSettingsError, P.PartError) as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, **_print_settings_report(proj)}
+
+
+def _print_settings_report(proj: P.Project) -> dict:
+    parts = {}
+    for p in proj.parts:
+        if p.get("print"):
+            parts[p["name"]] = {"stored": p["print"], "effective": PS.part_settings(p)}
+    return {"project": {"stored": proj.data.get("print", {}), "effective": PS.project_settings(proj.data)},
+            "parts": parts, "profiles": PS.PROFILE_HELP}
+
+
+@mcp.tool()
 def slice_plate(plate: int = 1, materials: list[str] | None = None, one_filament: bool = False,
                 layer_height_mm: float | None = None, infill_percent: float | None = None,
                 wall_loops: int | None = None, top_layers: int | None = None, bottom_layers: int | None = None,
                 supports: bool | None = None, brim_width_mm: float | None = None, process: str | None = None,
-                printer: str | None = None) -> dict:
+                printer: str | None = None, infill_pattern: str | None = None,
+                support_type: str | None = None) -> dict:
     """Slice one build plate to G-code with the bundled OrcaSlicer (Docker image), ready for the printer.
     Uses OrcaSlicer's system profiles for the printer (default from CADSTUDIO_PRINTER, e.g.
-    "Anycubic Kobra S1 0.4 nozzle") and its default process ("0.20mm Standard @..."), with optional overrides:
-    layer_height_mm, infill_percent, wall_loops, top_layers, bottom_layers, supports, brim_width_mm.
+    "Anycubic Kobra S1 0.4 nozzle") and its default process ("0.20mm Standard @..."), then the project's print
+    settings (set_print_settings: profile + overrides, and per-part settings), then the overrides given here
+    for this slice only: layer_height_mm, infill_percent, infill_pattern, wall_loops, top_layers,
+    bottom_layers, supports, support_type, brim_width_mm.
     materials: one entry per filament slot used on the plate, in slot order - a material ("PLA", "PETG",
     "PLA+", "ABS", ...) or a full OrcaSlicer filament preset name. Default: PLA for every slot.
     one_filament=True prints all parts with a single filament (filament 1 in the G-code); which ACE/AMS slot
     feeds it is chosen when the print is started (in the slicer/printer app or by the print service).
-    Returns the G-code path + download_url and the slicer's own estimates (print time, filament grams)."""
+    Returns the G-code path + download_url, the print settings used and the slicer's own estimates (print
+    time, filament grams) - check them before send_to_printer and adjust if the print is too long/heavy."""
     from . import slicer
     proj = _proj()
     if not slicer.available():
@@ -665,8 +771,13 @@ def slice_plate(plate: int = 1, materials: list[str] | None = None, one_filament
                                       "image (ghcr.io/allard-code/cadstudio); a local install needs CADSTUDIO_ORCA."}
     try:
         slots = sorted({int(s["filament"]) for s, _, _ in P.exportable_meshes(proj, None, plate=plate)})
-    except P.PartError as e:
+        here = PS.normalize({"layer_height_mm": layer_height_mm, "infill_percent": infill_percent,
+                             "infill_pattern": infill_pattern, "wall_loops": wall_loops, "top_layers": top_layers,
+                             "bottom_layers": bottom_layers, "supports": supports, "support_type": support_type,
+                             "brim_width_mm": brim_width_mm})
+    except (P.PartError, PS.PrintSettingsError) as e:
         return {"ok": False, "error": str(e)}
+    settings = {**PS.project_settings(proj.data), **here}
     fmap = {k: (1 if one_filament else i + 1) for i, k in enumerate(slots)}
     n = 1 if one_filament else len(slots)
     mats = list(materials or [])
@@ -676,16 +787,15 @@ def slice_plate(plate: int = 1, materials: list[str] | None = None, one_filament
     out_dir = proj.dir / "exports"
     model = out_dir / f"{proj.name}-plate{plate}.3mf"
     try:
-        _export_3mf(proj, model, mode="assembly", flavor="orca", plate=plate, filament_map=fmap)
-        overrides = {"layer_height_mm": layer_height_mm, "infill_percent": infill_percent, "wall_loops": wall_loops,
-                     "top_layers": top_layers, "bottom_layers": bottom_layers, "supports": supports,
-                     "brim_width_mm": brim_width_mm}
+        exp = _export_3mf(proj, model, mode="assembly", flavor="orca", plate=plate, filament_map=fmap,
+                          print_settings=settings)
         res = slicer.slice_3mf(model, out_dir, printer=printer or slicer.DEFAULT_PRINTER, process=process,
-                               filaments=mats, overrides=overrides)
+                               filaments=mats, settings=PS.to_orca(settings))
     except slicer.SlicerError as e:
         return {"ok": False, "error": str(e)}
     res.pop("log", None)
     res.update({"ok": True, "plate": plate, "download_url": links.download_url(res["gcode"]),
+                "print_settings": exp.get("print_settings", {"object": settings, "parts": {}}),
                 "filament_slots_in_gcode": {str(fmap[k]): f"CAD-Studio slot {k}" for k in slots}
                 if not one_filament else {"1": f"all parts (CAD-Studio slots {slots})"}})
     return res

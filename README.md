@@ -116,6 +116,7 @@ Example prompts:
 | Modelling | `set_params`, `set_part`, `update_part`, `add_primitive`, `delete_part` |
 | Build plates | `add_plate`, `remove_plate`, `arrange_plates` (and `plate` on `set_part` / `update_part`) |
 | Inspecting | `measure`, `render_preview`, `check_floating`, `check_wall_thickness`, `check_bridges` |
+| Print preparation | `suggest_orientation` (best side down, optionally for a load direction), `set_print_settings` (profile + overrides, written into the 3MF) |
 | Assembly | `set_assembly_item`, `delete_assembly_item`, `render_assembly`, `export_assembly_png`, `check_assembly_fit` |
 | Import | `list_inbox`, `import_mesh` (inbox file or URL) |
 | Export | `export_3mf`, `export_stl`, `export_step` (each with a download link) |

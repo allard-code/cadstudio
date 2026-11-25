@@ -137,6 +137,10 @@ Your own shared code may define functions with the same names; those win.
 * Clearance between separate parts: 0.2–0.3 mm per side.
 * M3 screw holes: Ø3.2 clearance, Ø2.8–2.9 for self-tapping. M3 heat-set insert: Ø4.0–4.2.
 * Flat face at the bottom for bed adhesion.
+* Orientation: `suggest_orientation(load_direction="x")` ranks which side goes down (support, base, height,
+  strength - layers split under a load across them); `apply=1` turns the plate's parts together.
+* Print settings: `set_print_settings(profile="functional"|"strong"|"watertight"|"decorative"|"draft"|"fine", ...)`
+  for the project or one part; they are written into the 3MF and used by `slice_plate`.
 
 ## Common mistakes
 * Forgetting `result` -> error "must assign a 3D shape".
