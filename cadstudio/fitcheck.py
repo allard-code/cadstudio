@@ -37,8 +37,7 @@ def check_fit(proj: Project, items: list[str] | None = None, allow: list | None 
     bounding boxes come within min_clearance of each other are measured; the rest are far apart."""
     names = []
     skipped = []
-    for a in proj.assembly:
-        spec = proj.find_assembly_item(a["name"])
+    for spec in proj.assembly_specs():
         if items and spec["name"] not in items:
             continue
         if not items and not spec["visible"]:

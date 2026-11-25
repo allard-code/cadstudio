@@ -385,7 +385,7 @@ def _mesh_response(e: dict) -> Response:
     return Response(data, media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
 
 
-@app.put("/api/assembly/{name}")
+@app.put("/api/assembly/{name:path}")
 def put_assembly_item(name: str, body: dict = Body(...)):
     proj = _proj()
     allowed = {k: body[k] for k in ("code", "color", "visible", "ghost", "explode", "note") if k in body}
@@ -393,14 +393,14 @@ def put_assembly_item(name: str, body: dict = Body(...)):
     return proj.summary()
 
 
-@app.delete("/api/assembly/{name}")
+@app.delete("/api/assembly/{name:path}")
 def del_assembly_item(name: str):
     proj = _proj()
     proj.delete_assembly_item(name)
     return proj.summary()
 
 
-@app.get("/api/assembly/mesh/{name}")
+@app.get("/api/assembly/mesh/{name:path}")
 def assembly_mesh(name: str):
     """Same binary format as /api/mesh/{name}, for an assembly item."""
     return _mesh_response(_proj().build_assembly_item(name))
@@ -427,6 +427,37 @@ def assembly_png(view: str = "iso", hide: str | None = None, ghost: str | None =
         save_assembly_png(proj, png, view)
         headers["Content-Disposition"] = f'attachment; filename="{proj.name}-assembly-{view}.png"'
     return Response(png, media_type="image/png", headers=headers)
+
+
+@app.get("/api/printing")
+def printing_status(plate: int = 1):
+    """What the editor's print bar needs: can we slice / send, and the last slice of this plate."""
+    from . import homeassistant as HA
+    from . import printing, slicer
+    proj = _proj()
+    return {"slicer": slicer.available(), "home_assistant": HA.configured(), "last": printing.last_slice(proj, plate),
+            "pauses": printing.plate_pauses(proj, plate)}
+
+
+@app.post("/api/slice")
+def slice_endpoint(body: dict = Body(...)):
+    from . import printing
+    proj = _proj()
+    res = printing.slice_plate(proj, plate=int(body.get("plate", 1)), materials=body.get("materials"),
+                               one_filament=bool(body.get("one_filament", True)))
+    if not res.get("ok"):
+        raise HTTPException(422, res.get("error"))
+    res["last"] = printing.last_slice(proj, int(body.get("plate", 1)))
+    return res
+
+
+@app.post("/api/print")
+def print_endpoint(body: dict = Body(...)):
+    from . import printing
+    res = printing.send_plate(_proj(), int(body.get("plate", 1)))
+    if not res.get("ok"):
+        raise HTTPException(422, res.get("error"))
+    return res
 
 
 @app.get("/api/preview.png")

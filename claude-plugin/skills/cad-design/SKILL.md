@@ -26,7 +26,8 @@ You work through the `cad-studio` MCP tools on a server (usually a Docker contai
 ## Assembly (multi-part builds)
 
 When several printed parts go together (a body on a chassis, wheels on axles), describe the assembly so the user can
-see the end result: one `set_assembly_item(name, code, color)` per component, in the assembled position (rotate parts
+see the end result. Preferred: in each printed part's code set `assembled = <shape in assembled position>` next to
+`result` (a dict for several pieces). For anything else: one `set_assembly_item(name, code, color)` per component, in the assembled position (rotate parts
 printed upside down back; add reference objects like a motor or rails too). Check it with `render_assembly()`
 (`ghost=["body"]` to look inside, `section="y"` to cut it open, `explode=1` for an exploded view) and give the user a
 picture with `export_assembly_png()`. Run `check_assembly_fit()` (one item per physical component) to catch
@@ -34,6 +35,11 @@ parts that overlap or jam. Assembly items are never exported or sliced.
 
 Use the built-in helpers (`spur_gear`, `d_hole`, `teardrop`, `pin_hole`, `screw_boss`, `magnet_pocket`, ...)
 instead of writing them again, and offer a `tolerance_coupon()` before a design with tight fits.
+
+## Inserts (magnets, nuts)
+
+Enclose them: subtract `magnet_pocket(d, h)` with at least 0.6 mm above it, set `pause_at = [top of the pocket]`
+in the part's code, and tell the user at which layer the print pauses (slice_plate reports it).
 
 ## Multi-colour (AMS / ACE Pro / MMU)
 

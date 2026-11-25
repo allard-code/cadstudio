@@ -80,6 +80,12 @@ Voorbeeldvraag: *"Maak een bakje van 80×50×30 mm met 2 mm wand, afgeronde hoek
 - **Hulpfuncties:** in elke onderdeelcode zonder import beschikbaar: `spur_gear`, `gear_centre_distance`,
   `d_hole`, `d_shaft`, `teardrop`, `pin`, `pin_hole`, `screw_boss`, `magnet_pocket` en `tolerance_coupon`
   (proefstrip met ingegraveerde spelingen).
+- **Samenstel vanuit het onderdeel zelf:** zet in de code van een onderdeel naast `result` (hoe het op het bed
+  ligt) ook `assembled` (waar het in het eindmodel zit). Het verschijnt dan vanzelf in het samenstel.
+- **Printpauze:** `pause_at = [z]` in de code van een onderdeel laat de print pauzeren vóór de laag boven die
+  hoogte, bijvoorbeeld om een magneet in een dichte holte te leggen.
+- **Slicen en printen in de editor:** *Slicen* in de bedbalk geeft printtijd en filament, *Printen* stuurt het
+  bed via Home Assistant naar de printer.
 - **Taal:** de editor is Engels- en Nederlandstalig; wissel met de EN/NL-keuze rechtsboven.
 
 ## Beveiliging

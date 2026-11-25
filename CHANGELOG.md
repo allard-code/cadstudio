@@ -5,6 +5,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-25
+
+### Added
+- A part's code can set `assembled = <shape>` (or a dict / list of pieces) next to `result`: the part then
+  appears in the assembly by itself, in its assembled position, while it still prints the way `result` lies on
+  the bed. One source for both, so the assembly follows every change. Stored assembly entries without code
+  override the colour, see-through, visibility and explode direction of these items.
+- Print pauses: a part's code can set `pause_at = [z, ...]` and `slice_plate(pauses=[...])` adds more heights;
+  the G-code then pauses (the printer profile's pause command, `M601` on the Kobra S1) before the first layer
+  above each height - to drop a magnet or nut into a closed cavity.
+- Editor print bar next to the beds: *Slice* the shown bed with the built-in OrcaSlicer (print time, filament,
+  pauses, and a warning when the project changed since) and *Print* to send it via Home Assistant.
+  REST: `GET /api/printing`, `POST /api/slice`, `POST /api/print`.
+
+### Changed
+- Slicing and sending to the printer moved to `cadstudio/printing.py`, shared by the MCP tools and the editor.
+
 ## [0.6.0] - 2026-11-25
 
 ### Added
