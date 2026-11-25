@@ -177,7 +177,8 @@ exported, sliced or arranged.
 
 To enclose a magnet or nut, subtract `magnet_pocket()` below the surface and set `pause_at = [z]` in the part's
 code (the top of the cavity, mm above the bed). `slice_plate` then pauses the print before the first layer that
-closes the cavity; drop the magnet in and resume.
+closes the cavity; drop the magnet in and resume. `export_3mf` puts the same pauses in the 3MF, on the slicer's
+layer slider (for the exported layer height; open the file as a project so the slicer keeps them).
 
 ### Printing via Home Assistant
 

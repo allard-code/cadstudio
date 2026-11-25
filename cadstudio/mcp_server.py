@@ -63,7 +63,8 @@ Workflow:
    (same build123d code as parts; part("x") and the shared code work) - each item in its assembled position.
    Simpler for printed parts: in the part's own code, also assign `assembled = <shape in assembled position>`
    (or a dict of pieces) next to `result`; it then appears in the assembly by itself. A part can also set
-   `pause_at = [z, ...]` (mm above the bed) for a print pause, e.g. to drop a magnet into magnet_pocket().
+   `pause_at = [z, ...]` (mm above the bed) for a print pause, e.g. to drop a magnet into magnet_pocket();
+   export_3mf puts it on the slicer's layer slider, slice_plate into the G-code.
    e.g. a flipped print part rotated back, or reference objects like a motor or rails. They are never exported
    or sliced. render_assembly() pictures it: ghost=[...] makes a shell see-through, section="x|y|z" cuts it
    open, explode=1 pulls it apart; export_assembly_png() gives the user a download link.
@@ -678,7 +679,7 @@ def export_assembly_png(view: str = "iso", items: list[str] | None = None, hide:
 def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str = "orca",
                parts: list[str] | None = None, filament_density_g_cm3: float = 1.24,
                filament_price_eur_kg: float | None = None, print_rate_cm3_per_hour: float | None = 15.0,
-               plate: int | None = None, split_plates: bool = False) -> dict:
+               plate: int | None = None, split_plates: bool = False, pauses: bool = True) -> dict:
     """Export to 3MF.
     Build plates: by default every plate goes into one file (orca flavour: real slicer plates, each plate's
     parts centred on it). plate=N exports only that plate; split_plates=True writes one file per plate
@@ -691,6 +692,9 @@ def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str 
     filament_price_eur_kg: if given, adds a rough cost estimate.
     print_rate_cm3_per_hour: used for a rough print-time estimate (default 15, typical for a 0.4mm nozzle at
     ~0.2mm layers); pass None to skip it, or your own figure if you know the printer runs faster/slower.
+    pauses: the parts' `pause_at` heights go into the file as print pauses on the layer slider (pauses=False
+    leaves them out). The slicer keeps them when the file is opened as a project, and they assume the
+    exported layer height; the response lists them per plate (at_mm, layer_top_mm = the layer it pauses before).
     The response contains the path, a download_url, which parts are on which filament slot, and *rough*
     filament-weight/cost/time estimates (solid-model volume x density - ignores infill/perimeters, so these
     are upper bounds for anything below 100% infill, which is most prints; the slicer's own estimate, once
@@ -698,7 +702,8 @@ def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str 
     proj = _proj()
     res = _export_3mf(proj, filename, mode=mode, flavor=flavor, only=parts, thumbnail=thumbnail(proj),
                        filament_density_g_cm3=filament_density_g_cm3, filament_price_eur_kg=filament_price_eur_kg,
-                       print_rate_cm3_per_hour=print_rate_cm3_per_hour, plate=plate, split_plates=split_plates)
+                       print_rate_cm3_per_hour=print_rate_cm3_per_hour, plate=plate, split_plates=split_plates,
+                       pauses=pauses)
     if "paths" in res:
         res["download_urls"] = [links.download_url(p) for p in res["paths"]]
     else:

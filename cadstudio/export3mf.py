@@ -20,6 +20,7 @@ centred on plate 1), which every slicer understands.
 from __future__ import annotations
 
 import datetime as _dt
+import math
 import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape, quoteattr
@@ -34,6 +35,7 @@ CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
  <Default Extension="config" ContentType="text/xml"/>
+ <Default Extension="xml" ContentType="text/xml"/>
  <Default Extension="png" ContentType="image/png"/>
 </Types>"""
 
@@ -121,13 +123,62 @@ def _slot_warnings(items) -> list[str]:
     return w
 
 
+FIRST_LAYER_MM = 0.2  # first layer height of the slicer's default process (Orca / Anycubic / Prusa 0.4 nozzle)
+
+
+def pause_layer_top(at_mm: float, layer_height: float, first_layer: float = FIRST_LAYER_MM) -> float:
+    """Top of the first layer above at_mm - the layer the printer pauses before (same rule as slice_plate).
+    Slicers attach a per-layer pause to the layer nearest its height, so the exact layer top is written."""
+    if at_mm < first_layer - 1e-6:
+        return round(first_layer, 4)
+    k = math.floor((at_mm - first_layer) / layer_height + 1e-6) + 1
+    return round(first_layer + k * layer_height, 4)
+
+
+def _part_pauses(proj: Project, items, single_plate: bool) -> dict[int, list[float]]:
+    """pause_at heights per plate number in the file (plate 1 when a single plate is exported)."""
+    out: dict[int, set[float]] = {}
+    for s, _, _ in items:
+        hs = proj.build(s["name"])["info"].get("pause_at") or []
+        if hs:
+            out.setdefault(1 if single_plate else int(s["plate"]), set()).update(float(h) for h in hs)
+    return {k: sorted(v) for k, v in sorted(out.items())}
+
+
+def _pause_xml(flavor: str, pauses: dict[int, list[dict]], multi_slot: dict[int, bool]) -> tuple[str, str]:
+    """Per-layer pause events as the slicer stores them in a project 3MF (type 1 = pause print)."""
+    def code(tag: str, zkey: str, p: dict) -> str:
+        msg = f"CAD-Studio: pause at {p['at_mm']:g} mm"
+        return (f'<{tag} {zkey}="{p["layer_top_mm"]:g}" type="1" extruder="1" color="" '
+                f'extra={quoteattr(msg)} gcode="M601"/>')
+    if flavor == "prusa":
+        rows = sorted({p["layer_top_mm"]: p for ps in pauses.values() for p in ps}.values(),
+                      key=lambda p: p["layer_top_mm"])
+        mode = "MultiExtruder" if any(multi_slot.values()) else "SingleExtruder"
+        body = "\n".join(code("code", "print_z", p) for p in rows)
+        return ("Metadata/Prusa_Slicer_custom_gcode_per_print_z.xml",
+                f'<?xml version="1.0" encoding="utf-8"?>\n<custom_gcodes_per_print_z>\n{body}\n'
+                f'<mode value="{mode}"/>\n</custom_gcodes_per_print_z>\n')
+    plates = []
+    for k, ps in sorted(pauses.items()):
+        mode = "MultiExtruder" if multi_slot.get(k) else "SingleExtruder"
+        rows = "\n".join(code("layer", "top_z", p) for p in ps)
+        plates.append(f'<plate>\n<plate_info id="{k}"/>\n{rows}\n<mode value="{mode}"/>\n</plate>')
+    return ("Metadata/custom_gcode_per_layer.xml",
+            '<?xml version="1.0" encoding="utf-8"?>\n<custom_gcodes_per_layer>\n' + "\n".join(plates)
+            + "\n</custom_gcodes_per_layer>\n")
+
+
 def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assembly", flavor: str = "orca",
                only: list[str] | None = None, object_name: str | None = None, thumbnail: bytes | None = None,
                filament_density_g_cm3: float = 1.24, filament_price_eur_kg: float | None = None,
                print_rate_cm3_per_hour: float | None = 15.0, plate: int | None = None,
                split_plates: bool = False, filament_map: dict[int, int] | None = None,
-               print_settings: dict | None = None) -> dict:
+               print_settings: dict | None = None, pauses: bool = True) -> dict:
     """plate: export only that plate (centred on a single bed). split_plates: one file per plate.
+    pauses: write the parts' `pause_at` heights as per-layer pauses (Orca/Bambu/Anycubic:
+    Metadata/custom_gcode_per_layer.xml, PrusaSlicer: Metadata/Prusa_Slicer_custom_gcode_per_print_z.xml);
+    the slicer applies them when the file is opened as a project. They assume the exported layer height.
     filament_map: renumber filament slots in the file, e.g. {1: 1, 2: 1} prints everything with filament 1.
     print_settings: object-level print settings (friendly names, see printsettings.FIELDS); default: the
     project's own (profile + overrides). Per-part settings always come from the parts."""
@@ -143,7 +194,8 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
                                       thumbnail=thumbnail, filament_density_g_cm3=filament_density_g_cm3,
                                       filament_price_eur_kg=filament_price_eur_kg,
                                       print_rate_cm3_per_hour=print_rate_cm3_per_hour, plate=k,
-                                      filament_map=filament_map, print_settings=print_settings))
+                                      filament_map=filament_map, print_settings=print_settings,
+                                      pauses=pauses))
         out = {"paths": [r["path"] for r in results], "flavor": flavor, "mode": mode,
                "plates": {str(k): r for k, r in zip(used, results)},
                "warnings": [w for r in results for w in r["warnings"]],
@@ -265,6 +317,23 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
         cfg_name = "Metadata/model_settings.config"
         cfg_xml = '<?xml version="1.0" encoding="UTF-8"?>\n<config>\n' + "\n".join(cfg) + "\n</config>\n"
 
+    pause_file = None
+    pause_info: dict[str, list[dict]] = {}
+    if pauses:
+        heights = _part_pauses(proj, items, single_plate=plate is not None)
+        if heights:
+            lh = float(obj_ps.get("layer_height_mm") or 0.2)
+            per_plate = {k: [{"at_mm": h, "layer_top_mm": pause_layer_top(h, lh)} for h in hs]
+                         for k, hs in heights.items()}
+            slots: dict[int, set[int]] = {}
+            for s, _, _ in items:
+                slots.setdefault(1 if plate is not None else int(s["plate"]), set()).add(int(s["filament"]))
+            pause_file = _pause_xml(flavor, per_plate, {k: len(v) > 1 for k, v in slots.items()})
+            pause_info = {str(k): v for k, v in per_plate.items()}
+            warnings.append(f"Print pauses are in the file for {lh:g} mm layers (first layer {FIRST_LAYER_MM:g} mm). "
+                            "Open the 3MF as a project ('Open as project', not 'import geometry only') to keep "
+                            "them; check the pause marks on the layer slider after slicing.")
+
     model = head + "\n".join(objects) + "\n </resources>\n <build>\n" + "\n".join(build) + "\n </build>\n</model>\n"
 
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
@@ -275,6 +344,8 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
         z.writestr(cfg_name, cfg_xml)
         if thumbnail:
             z.writestr("Metadata/thumbnail.png", thumbnail)
+        if pause_file:
+            z.writestr(*pause_file)
 
     fil = {}
     grams_per_slot: dict[int, float] = {}
@@ -293,6 +364,8 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
               # is an upper bound for anything printed below 100% infill (which is most prints)
               "filament_g_solid_estimate": {str(k): round(v, 1) for k, v in sorted(grams_per_slot.items())},
               "total_g_solid_estimate": round(total_g, 1)}
+    if pause_info:
+        result["pauses"] = pause_info
     if obj_ps or any(part_ps.values()):
         result["print_settings"] = {"object": obj_ps, "parts": {k: v for k, v in part_ps.items() if v}}
     if filament_price_eur_kg is not None:
