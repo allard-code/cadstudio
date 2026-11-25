@@ -711,7 +711,8 @@ def set_print_settings(part: str | None = None, profile: str | None = None, laye
                        wall_loops: int | None = None, top_layers: int | None = None, bottom_layers: int | None = None,
                        infill_percent: float | None = None, infill_pattern: str | None = None,
                        supports: bool | None = None, support_type: str | None = None,
-                       brim_width_mm: float | None = None, clear: bool = False) -> dict:
+                       brim_width_mm: float | None = None, clear: bool = False,
+                       unset: list[str] | None = None) -> dict:
     """Store print settings with the design. They are written into every exported 3MF as per-object / per-part
     settings (the slicer opens the file with them applied) and slice_plate uses them. Choose them from what the
     part is FOR - load, wear, watertightness, looks - and say why in one line to the user.
@@ -722,7 +723,9 @@ def set_print_settings(part: str | None = None, profile: str | None = None, laye
     draft (0.28 mm fit test) | fine (0.12 mm detail) | standard (slicer defaults); "" removes the profile.
     Other arguments override single values on top of the profile: infill_pattern e.g. gyroid | grid | cubic |
     honeycomb | lightning | rectilinear | concentric; support_type normal | tree. Values you leave out stay as
-    stored; clear=True starts from scratch. Call with no arguments to read the current settings.
+    stored; unset=["infill_percent", ...] removes single overrides (back to the profile); clear=True starts from
+    scratch. Call with no arguments to read the current settings. The user sees and edits the same settings in
+    the editor (Print settings panel, and per part in the inspector).
     Layer lines are the weak direction: also check the orientation (suggest_orientation) for loaded parts.
     Returns the stored settings and the effective settings per level."""
     proj = _proj()
@@ -730,8 +733,8 @@ def set_print_settings(part: str | None = None, profile: str | None = None, laye
                  "bottom_layers": bottom_layers, "infill_percent": infill_percent, "infill_pattern": infill_pattern,
                  "supports": supports, "support_type": support_type, "brim_width_mm": brim_width_mm}
     try:
-        if profile is not None or clear or any(v is not None for v in overrides.values()):
-            proj.set_print_settings(part=part, profile=profile, overrides=overrides, clear=clear)
+        if profile is not None or clear or unset or any(v is not None for v in overrides.values()):
+            proj.set_print_settings(part=part, profile=profile, overrides=overrides, clear=clear, unset=unset)
         elif part is not None:
             proj.find(part)
     except (PS.PrintSettingsError, P.PartError) as e:

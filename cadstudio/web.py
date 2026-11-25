@@ -429,6 +429,28 @@ def assembly_png(view: str = "iso", hide: str | None = None, ghost: str | None =
     return Response(png, media_type="image/png", headers=headers)
 
 
+@app.get("/api/print-settings/meta")
+def print_settings_meta():
+    """Profiles, fields and choices for the editor's print-settings panels."""
+    from . import printsettings as PS
+    return {"profiles": PS.PROFILES, "help": PS.PROFILE_HELP,
+            "fields": {k: {"type": f[0].__name__, "object_only": f[3]} for k, f in PS.FIELDS.items()},
+            "infill_patterns": sorted(PS.INFILL_PATTERNS), "support_types": sorted(PS.SUPPORT_TYPES)}
+
+
+@app.put("/api/print-settings")
+def put_print_settings(body: dict = Body(...)):
+    """{part?: name (omit = project), profile?: name ("" = none), overrides?: {...}, unset?: [...], clear?: bool}"""
+    from . import printsettings as PS
+    proj = _proj()
+    try:
+        proj.set_print_settings(part=body.get("part"), profile=body.get("profile"), overrides=body.get("overrides"),
+                                clear=bool(body.get("clear")), unset=body.get("unset"))
+    except (PS.PrintSettingsError, P.PartError) as e:
+        raise HTTPException(422, str(e)) from e
+    return proj.summary()
+
+
 @app.get("/api/printing")
 def printing_status(plate: int = 1):
     """What the editor's print bar needs: can we slice / send, and the last slice of this plate."""

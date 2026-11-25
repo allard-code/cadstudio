@@ -612,6 +612,101 @@ function renderParts() {
   if (!S.project.parts.length) box.innerHTML = `<div class="muted">${t("parts.empty")}</div>`;
 }
 
+// ------------------------------------------------------------------ print settings (project + per part)
+// Stored as {profile?, overrides?}; written into the 3MF and used for slicing. An empty field follows the profile
+// (or the slicer default); a filled field is an override (orange border, ✕ removes it).
+let PSMETA = null;
+const PS_FIELDS = [
+  ["layer_height_mm", "number", 0.02], ["wall_loops", "number", 1], ["top_layers", "number", 1],
+  ["bottom_layers", "number", 1], ["infill_percent", "number", 5], ["infill_pattern", "pattern"],
+  ["supports", "bool"], ["support_type", "stype"], ["brim_width_mm", "number", 0.5],
+];
+async function loadPsMeta() { try { PSMETA = await api("/api/print-settings/meta"); } catch { PSMETA = null; } }
+const psPartLevelOk = (k) => !PSMETA.fields[k].object_only;
+function psBase(stored, partLevel) {
+  const prof = (stored.profile && PSMETA.profiles[stored.profile]) || {};
+  return Object.fromEntries(Object.entries(prof).filter(([k]) => !partLevel || psPartLevelOk(k)));
+}
+function psValueText(k, v) {
+  if (v === undefined || v === null) return "";
+  if (k === "supports") return v ? t("ps.on") : t("ps.off");
+  if (k === "infill_percent") return `${+v}%`;
+  if (k === "layer_height_mm" || k === "brim_width_mm") return `${+v} mm`;
+  return String(v);
+}
+function psSummary(stored, partLevel) {
+  const eff = { ...psBase(stored, partLevel), ...(stored.overrides || {}) };
+  const bits = [];
+  if (stored.profile) bits.push(`<b>${t("ps.profile." + stored.profile)}</b>`);
+  if (eff.layer_height_mm) bits.push(`${eff.layer_height_mm} mm`);
+  if (eff.wall_loops) bits.push(t("ps.sum.walls", { n: eff.wall_loops }));
+  if (eff.infill_percent !== undefined) bits.push(`${eff.infill_percent}%${eff.infill_pattern ? " " + eff.infill_pattern : ""}`);
+  else if (eff.infill_pattern) bits.push(eff.infill_pattern);
+  if (eff.supports) bits.push(t("ps.sum.support") + (eff.support_type ? ` (${eff.support_type})` : ""));
+  const n = Object.keys(stored.overrides || {}).length;
+  if (n && stored.profile) bits.push(t("ps.sum.changed", { n }));
+  return bits.length ? bits.join(" · ") : (partLevel ? t("ps.part.inherit") : t("ps.defaults"));
+}
+function renderPsForm(box, stored, partLevel, save) {
+  if (!PSMETA || box.contains(document.activeElement)) return;   // never clobber what the user is typing
+  box.innerHTML = "";
+  const base = psBase(stored, partLevel); const ov = stored.overrides || {};
+  const prow = document.createElement("div"); prow.className = "full";
+  prow.innerHTML = `<label>${t("ps.profile")}</label><select></select>`;
+  const sel = prow.querySelector("select");
+  sel.add(new Option(partLevel ? t("ps.profile.part.none") : t("ps.profile.none"), ""));
+  for (const name of Object.keys(PSMETA.profiles)) if (name !== "standard") sel.add(new Option(t("ps.profile." + name), name));
+  sel.value = stored.profile || "";
+  sel.onchange = () => save({ profile: sel.value });
+  box.appendChild(prow);
+  const help = document.createElement("div"); help.className = "help";
+  help.textContent = stored.profile ? t("ps.help." + stored.profile) : (partLevel ? t("ps.help.part") : t("ps.help.none"));
+  box.appendChild(help);
+  const inherit = (k) => (k in base ? psValueText(k, base[k]) : t("ps.slicer"));
+  for (const [k, kind, step] of PS_FIELDS) {
+    if (partLevel && !psPartLevelOk(k)) continue;
+    const lab = document.createElement("label"); lab.textContent = t("ps.f." + k); lab.title = t("ps.f." + k);
+    let ctl;
+    if (kind === "number") {
+      ctl = document.createElement("input"); ctl.type = "number"; ctl.step = step; ctl.min = 0;
+      ctl.value = k in ov ? ov[k] : ""; ctl.placeholder = inherit(k);
+    } else {
+      ctl = document.createElement("select");
+      ctl.add(new Option(`↳ ${inherit(k)}`, ""));
+      const opts = kind === "pattern" ? PSMETA.infill_patterns : kind === "stype" ? PSMETA.support_types : ["1", "0"];
+      for (const o of opts) ctl.add(new Option(kind === "bool" ? (o === "1" ? t("ps.on") : t("ps.off")) : o, o));
+      ctl.value = k in ov ? (kind === "bool" ? (ov[k] ? "1" : "0") : ov[k]) : "";
+    }
+    ctl.classList.toggle("ovr", k in ov);
+    ctl.onchange = () => {
+      const raw = ctl.value;
+      if (raw === "") return save({ unset: [k] });
+      const val = kind === "number" ? parseFloat(raw) : kind === "bool" ? raw === "1" : raw;
+      if (kind === "number" && Number.isNaN(val)) return;
+      save({ overrides: { [k]: val } });
+    };
+    const x = document.createElement("span"); x.className = "x" + (k in ov ? " on" : ""); x.textContent = "✕";
+    x.title = t("ps.unset"); x.onclick = () => save({ unset: [k] });
+    box.append(lab, ctl, x);
+  }
+  if (stored.profile || Object.keys(ov).length) {
+    const r = document.createElement("button"); r.className = "reset"; r.textContent = t("ps.reset");
+    r.onclick = () => save({ clear: true });
+    box.appendChild(r);
+  }
+}
+async function savePs(part, body) {
+  try { await apply(await api("/api/print-settings", { method: "PUT", body: JSON.stringify({ ...(part ? { part } : {}), ...body }) })); }
+  catch (e) { toast(e.message, "err"); }
+}
+function renderPrintSettings() {
+  if (!PSMETA || !S.project) { $("#psSection").classList.add("hidden"); return; }
+  $("#psSection").classList.remove("hidden");
+  const stored = S.project.print || {};
+  $("#psSummary").innerHTML = psSummary(stored, false);
+  renderPsForm($("#psForm"), stored, false, (b) => savePs(null, b));
+}
+
 // ------------------------------------------------------------------ UI: inspector
 function renderInspector(force = false) {
   const ins = $("#inspector");
@@ -662,7 +757,14 @@ function renderInspector(force = false) {
       const n = S.selected; S.selected = null;
       apply(await api(`/api/parts/${encodeURIComponent(n)}`, { method: "DELETE" }));
     };
+    const pw = $("#pPrintWrap");
+    pw.open = !!S.psPartOpen; pw.ontoggle = () => { S.psPartOpen = pw.open; };
+    pw.classList.toggle("hidden", !PSMETA);
     S.dirtyCode = false;
+  }
+  if (PSMETA) {
+    $("#pPrintSum").innerHTML = psSummary(p.print || {}, true);
+    renderPsForm($("#pPrint"), p.print || {}, true, (b) => savePs(p.name, b));
   }
   $("#pName").value = p.name;
   $("#pColor").value = p.color.length === 7 ? p.color : "#cccccc";
@@ -764,6 +866,7 @@ function apply(summary, force = false) {
     if (S.plate > plateCount()) S.plate = 0;
     renderAsm();
     renderParams(); renderParts(); renderInspector(force); syncSceneProps(); renderCheckpoints(); renderPlates();
+    renderPrintSettings();
     if (document.activeElement !== $("#notes")) $("#notes").value = summary.notes || "";
     if (document.activeElement !== $("#common")) { $("#common").value = summary.common || ""; S.dirtyCommon = false; $("#commonRun").classList.remove("dirty"); }
     document.title = `CAD-Studio · ${summary.name}`;
@@ -1039,9 +1142,10 @@ $("#langSelect").value = LANG;
 $("#langSelect").onchange = (e) => {
   setLang(e.target.value);
   renderVersion();
-  if (S.project) { renderParams(); renderParts(); renderInspector(true); updateDims(); renderPlates(); syncSceneProps(); }
+  if (S.project) { renderParams(); renderParts(); renderInspector(true); updateDims(); renderPlates(); syncSceneProps(); renderPrintSettings(); }
 };
 
+await loadPsMeta();
 await loadProjects();
 await reload();
 connectEvents();

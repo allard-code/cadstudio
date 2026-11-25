@@ -298,14 +298,19 @@ class Project:
 
     # ---- print settings (written into the 3MF and used by slice_plate; see printsettings.py)
     def set_print_settings(self, part: str | None = None, profile: str | None = None,
-                           overrides: dict | None = None, clear: bool = False) -> dict:
+                           overrides: dict | None = None, clear: bool = False,
+                           unset: list[str] | None = None) -> dict:
         """Project-level (part=None) or per-part print settings. profile: a printsettings.PROFILES name
         ("" removes it); overrides: friendly settings merged into the stored ones (a None value is ignored);
-        clear: drop the stored profile and overrides first. Returns the stored {profile?, overrides}."""
+        clear: drop the stored profile and overrides first; unset: names of single overrides to remove (back to
+        the profile's value). Returns the stored {profile?, overrides}."""
         from . import printsettings as PS
 
         part_level = part is not None
         ov = PS.normalize(overrides, part_level=part_level)
+        bad = [k for k in (unset or []) if k not in PS.FIELDS]
+        if bad:
+            raise PS.PrintSettingsError(f"Unknown print setting(s) {bad}. Known: {', '.join(PS.FIELDS)}")
         if profile:
             PS.profile_settings(profile, part_level=part_level)  # validates the name
         with LOCK:
@@ -317,6 +322,8 @@ class Project:
                 target = self.data
             cur = {} if clear else dict(target.get("print") or {})
             cur["overrides"] = {**({} if clear else dict(cur.get("overrides") or {})), **ov}
+            for k in unset or []:
+                cur["overrides"].pop(k, None)
             if profile is not None:
                 cur["profile"] = profile.strip().lower()
             if not cur.get("profile"):
