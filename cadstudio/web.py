@@ -23,7 +23,7 @@ from . import links
 from . import project as P
 from . import version as _version
 from .export3mf import export_3mf, export_step, export_stl
-from .render import render_png, thumbnail
+from .render import render_assembly_png, render_png, save_assembly_png, thumbnail
 
 STATIC = Path(__file__).parent / "static"
 
@@ -373,13 +373,60 @@ async def import_file(file: UploadFile, name: str | None = None):
 @app.get("/api/mesh/{name}")
 def mesh(name: str):
     """Binary mesh: [uint32 nverts][uint32 ntris][float32 xyz * nverts][uint32 abc * ntris]."""
-    e = _proj().build(name)
+    return _mesh_response(_proj().build(name))
+
+
+def _mesh_response(e: dict) -> Response:
     if not e["info"].get("ok"):
         raise HTTPException(422, e["info"].get("error"))
     V, F = e["mesh"]
     head = np.array([len(V), len(F)], dtype=np.uint32).tobytes()
     data = head + V.astype(np.float32).tobytes() + F.astype(np.uint32).tobytes()
     return Response(data, media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
+
+
+@app.put("/api/assembly/{name}")
+def put_assembly_item(name: str, body: dict = Body(...)):
+    proj = _proj()
+    allowed = {k: body[k] for k in ("code", "color", "visible", "ghost", "explode", "note") if k in body}
+    proj.upsert_assembly_item(name, **allowed)
+    return proj.summary()
+
+
+@app.delete("/api/assembly/{name}")
+def del_assembly_item(name: str):
+    proj = _proj()
+    proj.delete_assembly_item(name)
+    return proj.summary()
+
+
+@app.get("/api/assembly/mesh/{name}")
+def assembly_mesh(name: str):
+    """Same binary format as /api/mesh/{name}, for an assembly item."""
+    return _mesh_response(_proj().build_assembly_item(name))
+
+
+def _csv(v: str | None) -> list[str] | None:
+    return [x for x in v.split(",") if x] if v is not None else None
+
+
+@app.get("/api/assembly.png")
+def assembly_png(view: str = "iso", hide: str | None = None, ghost: str | None = None, explode: float = 0.0,
+                 section: str | None = None, section_at: float | None = None, section_flip: bool = False,
+                 size: int = 1600, download: bool = False):
+    """Assembly picture. hide/ghost: comma-separated item names (ghost="" = nothing see-through)."""
+    proj = _proj()
+    try:
+        png, _ = render_assembly_png(proj, view=view, size=max(400, min(3000, size)), hide=_csv(hide),
+                                     ghost=_csv(ghost), explode=explode, section=section or None,
+                                     section_at=section_at, section_flip=section_flip)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    headers = {"Cache-Control": "no-store"}
+    if download:
+        save_assembly_png(proj, png, view)
+        headers["Content-Disposition"] = f'attachment; filename="{proj.name}-assembly-{view}.png"'
+    return Response(png, media_type="image/png", headers=headers)
 
 
 @app.get("/api/preview.png")

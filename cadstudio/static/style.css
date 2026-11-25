@@ -92,3 +92,13 @@ input[type=color]{width:100%;height:30px;padding:2px}
 #plateTabs{display:flex;gap:4px}
 #plateTabs button.over{border-color:var(--danger)}
 #plateTabs button.on.over{color:var(--danger)}
+#asmPanel{position:absolute;top:44px;right:8px;z-index:2;background:#1d2026d9;border:1px solid var(--line);
+  border-radius:6px;padding:6px 9px;display:flex;flex-direction:column;gap:5px;max-height:60%;overflow:auto;min-width:210px}
+#asmPanel .asmrow{display:flex;gap:6px;align-items:center}
+#asmPanel input[type=range]{flex:1}
+#asmItems .it{display:flex;gap:6px;align-items:center;font-size:12px}
+#asmItems .it .sw{width:10px;height:10px;border-radius:2px;flex:none}
+#asmItems .it .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#asmItems .it.err .nm{color:var(--danger)}
+#asmItems label{display:flex;gap:2px;align-items:center;opacity:.85}
+#asmTab.on{border-color:var(--accent);color:var(--accent)}

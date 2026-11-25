@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-24
+
+### Added
+- Assembly view: a project can now describe how its printed parts go together. Assembly items are build123d code
+  like parts (shared code, parameters and `part("name")` work) placed in their assembled position, and can also be
+  reference objects that are never printed (a motor, a battery, rails). They live outside the build plates: never
+  exported, sliced or arranged, and saved in checkpoints.
+- MCP tools `set_assembly_item`, `delete_assembly_item`, `render_assembly` (see-through items, a section cut along
+  X/Y/Z with red cut faces, an exploded view) and `export_assembly_png` (the same picture as a PNG with a download
+  link).
+- Editor: an *⚙ Assembly* button below the view switches from the build plates to the assembly, with show /
+  see-through per item, an *Explode* slider, the existing *Section* tool, and *Picture (PNG)* to download the view.
+  `/#assembly` opens the editor straight in the assembly view. REST: `PUT/DELETE /api/assembly/{name}`,
+  `GET /api/assembly/mesh/{name}`, `GET /api/assembly.png`.
+
 ## [0.4.1] - 2026-11-24
 
 ### Fixed

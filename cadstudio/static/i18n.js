@@ -4,6 +4,9 @@
 
 export const STRINGS = {
   en: {
+    "asm.tab": "⚙ Assembly", "asm.tab.title": "Show how the printed parts go together (the assembly), instead of the build plates",
+    "asm.explode": "Explode", "asm.show": "show", "asm.ghost": "see-through",
+    "asm.png": "⤓ Picture (PNG)", "asm.png.title": "Download a picture of the assembly as shown (view, hidden/see-through items, explode, section)",
     "plates.all": "All beds", "plates.plate": "Bed {i}", "plates.add": "Add a build plate (bed)",
     "plates.remove": "Remove the selected bed (its parts move to the previous bed)",
     "plates.remove.confirm": "Remove bed {i}? Its parts move to bed {to}.",
@@ -70,6 +73,9 @@ export const STRINGS = {
     "lang.title": "Language",
   },
   nl: {
+    "asm.tab": "⚙ Samenstel", "asm.tab.title": "Laat zien hoe de geprinte onderdelen in elkaar zitten (het samenstel), in plaats van de bedden",
+    "asm.explode": "Uit elkaar", "asm.show": "tonen", "asm.ghost": "doorzichtig",
+    "asm.png": "⤓ Afbeelding (PNG)", "asm.png.title": "Afbeelding van het samenstel downloaden zoals getoond (aanzicht, verborgen/doorzichtige delen, uit elkaar, doorsnede)",
     "plates.all": "Alle bedden", "plates.plate": "Bed {i}", "plates.add": "Bed (printplaat) toevoegen",
     "plates.remove": "Geselecteerd bed verwijderen (onderdelen gaan naar het vorige bed)",
     "plates.remove.confirm": "Bed {i} verwijderen? De onderdelen gaan naar bed {to}.",

@@ -7,7 +7,8 @@ License: GPL-3.0-or-later (add `# SPDX-License-Identifier: GPL-3.0-or-later` to 
 ## Layout
 - `cadstudio/project.py` – project model (JSON on disk in `$CADSTUDIO_HOME/projects/<name>/project.json`), part evaluation (build123d code assigning `result`), cache, tessellation + vertex weld (watertight meshes).
 - `cadstudio/export3mf.py` – 3MF (flavor `orca`: components + `Metadata/model_settings.config` with an extruder per part; flavor `prusa`: `Slic3r_PE_model.config` volume ranges), STL, STEP.
-- `cadstudio/render.py` – headless numpy z-buffer renderer for `render_preview` (no OpenGL).
+- `cadstudio/render.py` – headless numpy z-buffer renderer for `render_preview` and `render_assembly` (see-through,
+  section, explode; no OpenGL).
 - `cadstudio/mcp_server.py` – MCP tools (works with MCP SDK 1.x `FastMCP` and 2.x `MCPServer`); `main()` = stdio mode.
 - `cadstudio/web.py` – FastAPI app, token auth middleware (`CADSTUDIO_TOKEN`: Bearer / x-api-key / cookie / `?token=`), MCP routes mounted, SSE `/api/events` for live updates.
 - `cadstudio/links.py` – public URL, token, HMAC-signed download links, inbox folder.

@@ -23,6 +23,14 @@ You work through the `cad-studio` MCP tools on a server (usually a Docker contai
    - which colour goes in which filament slot (`filament_slots`);
    - any `warnings` (e.g. more than 4 slots).
 
+## Assembly (multi-part builds)
+
+When several printed parts go together (a body on a chassis, wheels on axles), describe the assembly so the user can
+see the end result: one `set_assembly_item(name, code, color)` per component, in the assembled position (rotate parts
+printed upside down back; add reference objects like a motor or rails too). Check it with `render_assembly()`
+(`ghost=["body"]` to look inside, `section="y"` to cut it open, `explode=1` for an exploded view) and give the user a
+picture with `export_assembly_png()`. Assembly items are never exported or sliced.
+
 ## Multi-colour (AMS / ACE Pro / MMU)
 
 - One colour = one part with its own `filament` (slot 1-4, 5-8 = second unit).

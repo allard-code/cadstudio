@@ -9,6 +9,7 @@
 - **Claude ontwerpt, jij kijkt live mee** in de browser-editor en past daarna zelf parameters, kleuren, code en positie aan.
 - **Parametrisch**: maten zijn projectparameters met schuifjes, en elk onderdeel is een kort build123d-script.
 - **Claude ziet wat het maakt**: `render_preview` geeft een render met 4 aanzichten.
+- **Samenstel**: laat zien hoe de geprinte onderdelen in elkaar zitten, met doorzichtige kap, doorsnede en uit-elkaar-weergave, in de editor en als PNG.
 - **Multi-color** voor AMS / ACE Pro / MMU: één onderdeel per kleur, elk met een eigen filament-slot.
 - **Waterdichte meshes**, plus export naar STL en STEP.
 - **Eén Docker-container**: editor en MCP op één poort, met token-beveiliging en ondertekende downloadlinks.
@@ -68,6 +69,11 @@ Voorbeeldvraag: *"Maak een bakje van 80×50×30 mm met 2 mm wand, afgeronde hoek
   vuurt het event `cadstudio_print_request` af (met `file_id`, materiaal, printtijd en gram). Een automation kiest
   daarna het slot en start de print; zie [docs/home-assistant-print.yaml](docs/home-assistant-print.yaml). Zet
   `CADSTUDIO_HA_URL` en `CADSTUDIO_HA_TOKEN` (long-lived token van een **admin**-gebruiker).
+- **Samenstel:** met `set_assembly_item` zet Claude elk onderdeel op zijn plek zoals het gemonteerd is (ook
+  hulpobjecten zoals een motor of rails; die worden nooit geprint). De knop *⚙ Samenstel* onder de 3D-weergave
+  toont het; per onderdeel tonen/doorzichtig, schuif *Uit elkaar*, *Doorsnede* om het open te snijden en
+  *Afbeelding (PNG)* om het huidige aanzicht te downloaden. `render_assembly` / `export_assembly_png` doen
+  hetzelfde voor Claude. Met `…/#assembly` open je de editor meteen in het samenstel.
 - **Taal:** de editor is Engels- en Nederlandstalig; wissel met de EN/NL-keuze rechtsboven.
 
 ## Beveiliging

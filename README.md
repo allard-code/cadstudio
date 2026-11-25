@@ -19,6 +19,7 @@
 - **Claude designs, you watch live.** Changes from Claude appear instantly in the browser editor, and you can tweak parameters, colours, code and position yourself.
 - **Parametric.** Dimensions are project parameters with sliders. Every part is a short build123d script.
 - **Claude can see its work.** `render_preview` returns a 4-view render, so Claude can check orientation, text and inlays.
+- **Assembly view.** Show how the printed parts go together: see-through shells, section cuts and an exploded view, in the editor and as a PNG.
 - **Multi-colour for AMS / ACE Pro / MMU.** One part per colour, each with its own filament slot. The export gives one object with a per-part extruder assignment.
 - **Clean meshes.** Watertight output, so the slicer doesn't need to "repair" anything. STL and STEP export too.
 - **Runs anywhere.** One Docker container: editor and MCP on one port, token auth, signed download links.
@@ -114,7 +115,8 @@ Example prompts:
 | Projects | `list_projects`, `new_project`, `open_project`, `get_project`, `set_notes` |
 | Modelling | `set_params`, `set_part`, `update_part`, `add_primitive`, `delete_part` |
 | Build plates | `add_plate`, `remove_plate`, `arrange_plates` (and `plate` on `set_part` / `update_part`) |
-| Inspecting | `measure`, `render_preview` |
+| Inspecting | `measure`, `render_preview`, `check_floating`, `check_wall_thickness` |
+| Assembly | `set_assembly_item`, `delete_assembly_item`, `render_assembly`, `export_assembly_png` |
 | Import | `list_inbox`, `import_mesh` (inbox file or URL) |
 | Export | `export_3mf`, `export_stl`, `export_step` (each with a download link) |
 | Printing | `slice_plate` (G-code with the bundled OrcaSlicer), `send_to_printer` (hand it to Home Assistant) |
@@ -143,6 +145,20 @@ under the 3D view switches between beds; *Arrange* spreads all printable parts o
 part's position is relative to the centre of its own bed. *Export 3MF* puts every bed in one file as separate
 slicer plates (Orca flavour), or, with "1 file per bed", writes one 3MF per bed — use that for PrusaSlicer, which
 has no plates.
+
+### Assembly view
+
+Show how the printed parts go together. Claude adds assembly items with `set_assembly_item(name, code)`: the same
+build123d code as a part, but in the assembled position (a part printed upside down is rotated back, for example),
+and also reference objects that are never printed, such as a motor or a piece of rail. Assembly items are never
+exported, sliced or arranged.
+
+- `render_assembly` draws it for Claude: `ghost=["body"]` makes a shell see-through, `section="x"|"y"|"z"` cuts it
+  open (cut faces red), `explode=1` pulls the items apart. `export_assembly_png` saves the same picture with a
+  download link.
+- In the editor, the *⚙ Assembly* button below the view shows the assembly instead of the build plates: show /
+  see-through per item, an *Explode* slider, the *Section* tool, and *Picture (PNG)* to download the current view.
+  `http://…/#assembly` opens the editor straight in this view.
 
 ### Printing via Home Assistant
 
