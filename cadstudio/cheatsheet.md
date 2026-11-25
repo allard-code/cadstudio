@@ -129,7 +129,7 @@ Your own shared code may define functions with the same names; those win.
 Besides `result`, a part's code may set:
 ```python
 assembled = Pos(0, 0, 25) * chassis      # where the part sits in the finished model (or a dict of pieces)
-pause_at = [4.2]                         # pause the print before the layer above 4.2 mm (drop in a magnet)
+pause_at = [4.2]                         # pause before the layer above 4.2 mm (drop in a magnet); in G-code and 3MF
 ```
 
 ## Printability (FDM, 0.4 nozzle)

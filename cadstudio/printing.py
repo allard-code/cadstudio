@@ -86,8 +86,9 @@ def slice_plate(proj: P.Project, plate: int = 1, materials: list[str] | None = N
     model = out_dir / f"{proj.name}-plate{plate}.3mf"
     printer = printer or slicer.DEFAULT_PRINTER
     try:
+        # pauses=False: slice_plate inserts its own pauses below, at the exact layer of the sliced G-code
         exp = _export_3mf(proj, model, mode="assembly", flavor="orca", plate=plate, filament_map=fmap,
-                          print_settings=settings)
+                          print_settings=settings, pauses=False)
         res = slicer.slice_3mf(model, out_dir, printer=printer, process=process, filaments=mats,
                                settings=PS.to_orca(settings))
     except slicer.SlicerError as e:

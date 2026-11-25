@@ -5,6 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-25
+
+### Added
+- Print pauses in the 3MF: a part's `pause_at` heights are written as pause events on the slicer's layer slider
+  (Orca / Bambu / Anycubic Slicer Next: `Metadata/custom_gcode_per_layer.xml` per plate, PrusaSlicer:
+  `Metadata/Prusa_Slicer_custom_gcode_per_print_z.xml`), on the first layer above each height for the exported
+  layer height. The slicer keeps them when the file is opened as a project. `export_3mf(pauses=False)` leaves
+  them out; the response lists them per plate.
+
+### Changed
+- `slice_plate` exports its working 3MF without those pause events, so its own G-code pauses are not doubled.
+
 ## [0.9.0] - 2026-11-25
 
 ### Added

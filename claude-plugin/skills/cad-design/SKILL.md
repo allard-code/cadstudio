@@ -46,7 +46,8 @@ instead of writing them again, and offer a `tolerance_coupon()` before a design 
 ## Inserts (magnets, nuts)
 
 Enclose them: subtract `magnet_pocket(d, h)` with at least 0.6 mm above it, set `pause_at = [top of the pocket]`
-in the part's code, and tell the user at which layer the print pauses (slice_plate reports it).
+in the part's code, and tell the user at which layer the print pauses (slice_plate and export_3mf report it;
+the exported 3MF carries the pause when opened as a project in the slicer).
 
 ## Multi-colour (AMS / ACE Pro / MMU)
 
