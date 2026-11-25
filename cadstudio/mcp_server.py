@@ -59,7 +59,10 @@ Workflow:
    CADSTUDIO_PRINTER); one_filament=True prints the whole plate from a single spool.
    send_to_printer(plate=N) then hands that G-code to Home Assistant, which starts the print (if configured).
 7. Assembly: to show how the printed parts go together, add assembly items with set_assembly_item(name, code)
-   (same build123d code as parts; part("x") and the shared code work) - each item in its assembled position,
+   (same build123d code as parts; part("x") and the shared code work) - each item in its assembled position.
+   Simpler for printed parts: in the part's own code, also assign `assembled = <shape in assembled position>`
+   (or a dict of pieces) next to `result`; it then appears in the assembly by itself. A part can also set
+   `pause_at = [z, ...]` (mm above the bed) for a print pause, e.g. to drop a magnet into magnet_pocket().
    e.g. a flipped print part rotated back, or reference objects like a motor or rails. They are never exported
    or sliced. render_assembly() pictures it: ghost=[...] makes a shell see-through, section="x|y|z" cuts it
    open, explode=1 pulls it apart; export_assembly_png() gives the user a download link.
@@ -648,7 +651,7 @@ def slice_plate(plate: int = 1, materials: list[str] | None = None, one_filament
                 layer_height_mm: float | None = None, infill_percent: float | None = None,
                 wall_loops: int | None = None, top_layers: int | None = None, bottom_layers: int | None = None,
                 supports: bool | None = None, brim_width_mm: float | None = None, process: str | None = None,
-                printer: str | None = None) -> dict:
+                printer: str | None = None, pauses: list[float] | None = None) -> dict:
     """Slice one build plate to G-code with the bundled OrcaSlicer (Docker image), ready for the printer.
     Uses OrcaSlicer's system profiles for the printer (default from CADSTUDIO_PRINTER, e.g.
     "Anycubic Kobra S1 0.4 nozzle") and its default process ("0.20mm Standard @..."), with optional overrides:
@@ -657,38 +660,16 @@ def slice_plate(plate: int = 1, materials: list[str] | None = None, one_filament
     "PLA+", "ABS", ...) or a full OrcaSlicer filament preset name. Default: PLA for every slot.
     one_filament=True prints all parts with a single filament (filament 1 in the G-code); which ACE/AMS slot
     feeds it is chosen when the print is started (in the slicer/printer app or by the print service).
-    Returns the G-code path + download_url and the slicer's own estimates (print time, filament grams)."""
-    from . import slicer
-    proj = _proj()
-    if not slicer.available():
-        return {"ok": False, "error": "OrcaSlicer is not available on this server. It is bundled in the Docker "
-                                      "image (ghcr.io/allard-code/cadstudio); a local install needs CADSTUDIO_ORCA."}
-    try:
-        slots = sorted({int(s["filament"]) for s, _, _ in P.exportable_meshes(proj, None, plate=plate)})
-    except P.PartError as e:
-        return {"ok": False, "error": str(e)}
-    fmap = {k: (1 if one_filament else i + 1) for i, k in enumerate(slots)}
-    n = 1 if one_filament else len(slots)
-    mats = list(materials or [])
-    if len(mats) < n:
-        mats += [mats[-1] if mats else "PLA"] * (n - len(mats))
-    mats = mats[:n]
-    out_dir = proj.dir / "exports"
-    model = out_dir / f"{proj.name}-plate{plate}.3mf"
-    try:
-        _export_3mf(proj, model, mode="assembly", flavor="orca", plate=plate, filament_map=fmap)
-        overrides = {"layer_height_mm": layer_height_mm, "infill_percent": infill_percent, "wall_loops": wall_loops,
-                     "top_layers": top_layers, "bottom_layers": bottom_layers, "supports": supports,
-                     "brim_width_mm": brim_width_mm}
-        res = slicer.slice_3mf(model, out_dir, printer=printer or slicer.DEFAULT_PRINTER, process=process,
-                               filaments=mats, overrides=overrides)
-    except slicer.SlicerError as e:
-        return {"ok": False, "error": str(e)}
-    res.pop("log", None)
-    res.update({"ok": True, "plate": plate, "download_url": links.download_url(res["gcode"]),
-                "filament_slots_in_gcode": {str(fmap[k]): f"CAD-Studio slot {k}" for k in slots}
-                if not one_filament else {"1": f"all parts (CAD-Studio slots {slots})"}})
-    return res
+    pauses: heights (mm above the bed) where the printer pauses before the next layer, to drop in a magnet or
+    nut; added to the `pause_at` heights that parts on the plate set in their code. Tell the user which layer.
+    Returns the G-code path + download_url, the slicer's own estimates (print time, filament grams) and the
+    inserted pauses."""
+    from . import printing
+    overrides = {"layer_height_mm": layer_height_mm, "infill_percent": infill_percent, "wall_loops": wall_loops,
+                 "top_layers": top_layers, "bottom_layers": bottom_layers, "supports": supports,
+                 "brim_width_mm": brim_width_mm}
+    return printing.slice_plate(_proj(), plate=plate, materials=materials, one_filament=one_filament,
+                                overrides=overrides, process=process, printer=printer, pauses=pauses)
 
 
 @mcp.tool()
@@ -700,34 +681,8 @@ def send_to_printer(plate: int = 1) -> dict:
     user's phone which ACE/AMS slot to print from and then calls the printer integration's print action with
     uploaded_gcode_file = file_id. Needs CADSTUDIO_HA_URL and CADSTUDIO_HA_TOKEN (admin user) on the server.
     Run slice_plate(plate=N) first; this sends the most recent slice of that plate."""
-    from . import homeassistant as HA
-    from . import slicer
-    if not HA.configured():
-        return {"ok": False, "error": "Home Assistant is not configured on this server: set CADSTUDIO_HA_URL and "
-                                      "CADSTUDIO_HA_TOKEN (long-lived token of an admin user) and restart."}
-    proj = _proj()
-    gcode = proj.dir / "exports" / f"{proj.name}-plate{plate}.gcode"
-    if not gcode.is_file():
-        return {"ok": False, "error": f"No G-code for plate {plate} yet - run slice_plate(plate={plate}) first."}
-    warnings = []
-    pj = proj.dir / "project.json"
-    if pj.exists() and pj.stat().st_mtime > gcode.stat().st_mtime + 1:
-        warnings.append("The project was changed after this plate was sliced; the G-code may be outdated "
-                        "(run slice_plate again if the parts on this plate changed).")
-    stats = slicer._parse_gcode_stats(gcode)
-    materials = HA.gcode_materials(gcode)
-    try:
-        file_id = HA.upload_file(gcode)
-        data = {"file_id": file_id, "filename": gcode.name, "project": proj.name, "plate": plate,
-                "material": materials[0] if materials else "", "materials": materials,
-                "print_time": stats.get("print_time", ""), "filament_g": stats.get("filament_g", "")}
-        event = HA.fire_event(data)
-    except HA.HomeAssistantError as e:
-        return {"ok": False, "error": str(e)}
-    res = {"ok": True, "event": event, **data}
-    if warnings:
-        res["warnings"] = warnings
-    return res
+    from . import printing
+    return printing.send_plate(_proj(), plate)
 
 
 @mcp.tool()

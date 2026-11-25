@@ -101,4 +101,7 @@ input[type=color]{width:100%;height:30px;padding:2px}
 #asmItems .it .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #asmItems .it.err .nm{color:var(--danger)}
 #asmItems label{display:flex;gap:2px;align-items:center;opacity:.85}
+#printBar{display:inline-flex;gap:6px;align-items:center;margin-left:6px;padding-left:8px;border-left:1px solid var(--line)}
+#sliceInfo{font-size:12px;opacity:.85;white-space:nowrap}
+#sliceInfo.old{color:var(--danger)}
 #asmTab.on{border-color:var(--accent);color:var(--accent)}

@@ -278,15 +278,43 @@ class Project:
     def assembly(self) -> list[dict]:
         return self.data.setdefault("assembly", [])
 
-    def find_assembly_item(self, name: str) -> dict:
+    def assembly_specs(self) -> list[dict]:
+        """All assembly items: those a part's code defines with `assembled = ...` (name = part, or part/key for
+        several), then the items added with code. A stored entry without code only overrides the display
+        properties (colour, ghost, visible, explode) of an item that comes from a part."""
+        stored = {a["name"]: a for a in self.assembly}
+        out, seen = [], set()
+        for p in self.parts:
+            spec = {**PART_DEFAULTS, **p}
+            if spec["type"] != "code" or "assembled" not in (spec.get("code") or ""):
+                continue
+            e = self.build(spec["name"])
+            for key in (e.get("assembled") or {}):
+                name = spec["name"] if key == "" else f"{spec['name']}/{key}"
+                own = {k: v for k, v in stored.get(name, {}).items() if k not in ("code", "name")}
+                out.append({**ASSEMBLY_DEFAULTS, "color": spec["color"], "visible": spec["visible"], **own,
+                            "name": name, "code": "", "source": spec["name"], "source_key": key})
+                seen.add(name)
         for a in self.assembly:
+            if a["name"] not in seen:
+                out.append({**ASSEMBLY_DEFAULTS, **a})
+        return out
+
+    def find_assembly_item(self, name: str) -> dict:
+        specs = self.assembly_specs()
+        for a in specs:
             if a["name"] == name:
-                return {**ASSEMBLY_DEFAULTS, **a}
-        raise PartError(f"Assembly item '{name}' does not exist. Existing items: {[a['name'] for a in self.assembly]}")
+                return a
+        raise PartError(f"Assembly item '{name}' does not exist. Existing items: {[a['name'] for a in specs]}")
 
     def upsert_assembly_item(self, name: str, **fields) -> dict:
         with LOCK:
             fields = {k: v for k, v in fields.items() if v is not None}
+            if fields.get("code"):
+                src = next((a for a in self.assembly_specs() if a["name"] == name and a.get("source")), None)
+                if src:
+                    raise PartError(f"Assembly item '{name}' comes from part '{src['source']}' (`assembled = ...` in "
+                                    "its code); change it there, or use another name")
             if "explode" in fields:
                 ex = fields["explode"]
                 fields["explode"] = None if ex in ([], False) else ([float(v) for v in ex] + [0.0] * 3)[:3]
@@ -303,6 +331,10 @@ class Project:
 
     def delete_assembly_item(self, name: str) -> None:
         with LOCK:
+            src = next((a for a in self.assembly_specs() if a["name"] == name and a.get("source")), None)
+            if src and not any(a["name"] == name for a in self.assembly):
+                raise PartError(f"Assembly item '{name}' comes from part '{src['source']}': remove `assembled = ...` "
+                                "from that part's code to take it out of the assembly")
             before = len(self.assembly)
             self.data["assembly"] = [a for a in self.assembly if a["name"] != name]
             if len(self.assembly) == before:
@@ -314,6 +346,8 @@ class Project:
         """Build an assembly item; same cache entry shape as build(). Never raises for user-code errors."""
         with LOCK:
             spec = self.find_assembly_item(name)
+            if spec.get("source"):
+                return self._assembled_entry(spec)
             refs = [r for r in dict.fromkeys(PART_REF.findall(spec.get("code") or "")) if self.has(r)]
             key = _sha([spec, self.params, self.data.get("common", ""), [self._key(r) for r in refs]])
             hit = self._acache.get(name)
@@ -322,6 +356,36 @@ class Project:
             entry = self._make_entry({**spec, "type": "code", "location": None, "scale": None}, key, (), name)
             self._acache[name] = entry
             return entry
+
+    def _assembled_entry(self, spec: dict) -> dict:
+        """Assembly entry for an item a part defines itself (`assembled = ...` in the part's code)."""
+        e = self.build(spec["source"])
+        key = spec["source_key"]
+        name = spec["name"]
+        cache = e.setdefault("_assembled_entries", {})
+        if key in cache:
+            return cache[key]
+        entry: dict[str, Any] = {"key": e["key"] + key, "shape": None, "mesh": None,
+                                 "info": {"name": name, "key": (e["key"] + key)[:12] + key[:8]}}
+        try:
+            shape = e["assembled"][key]
+            entry["shape"] = shape
+            entry["mesh"] = tessellate(shape)
+            V, F = entry["mesh"]
+            if len(F) == 0:
+                raise PartError("`assembled` shape contains no geometry")
+            lo, hi = V.min(axis=0), V.max(axis=0)
+            entry["info"].update(ok=True, bbox_min=[round(float(x), 3) for x in lo],
+                                 bbox_max=[round(float(x), 3) for x in hi],
+                                 size=[round(float(x), 3) for x in hi - lo], triangles=int(len(F)))
+            try:
+                entry["info"]["volume_mm3"] = round(float(shape.volume), 2)
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception as ex:  # noqa: BLE001 - reported, not raised
+            entry["info"].update(ok=False, error=f"{type(ex).__name__}: {ex}")
+        cache[key] = entry
+        return entry
 
     def save_preset(self, name: str) -> dict:
         """Save the current parameters under a name, so a different size/variant can be switched back to later."""
@@ -778,8 +842,14 @@ class Project:
                 V, F = self._load_mesh(spec)
                 entry["mesh"] = (V, F)
             else:
+                extras: dict[str, Any] = {}
                 with contextlib.redirect_stdout(out):
-                    shape = self._eval_code(spec, _stack + (name,))
+                    shape = self._eval_code(spec, _stack + (name,), extras)
+                if extras.get("assembled"):
+                    entry["assembled"] = extras["assembled"]
+                    entry["info"]["assembled"] = sorted(extras["assembled"])
+                if extras.get("pause_at"):
+                    entry["info"]["pause_at"] = extras["pause_at"]
                 if isinstance(shape, MeshResult):
                     entry["mesh"] = weld(shape.V, shape.F)  # already final triangles, not an OCCT shape
                     entry["info"]["volume_mm3"] = round(mesh_volume(*entry["mesh"]), 2)
@@ -815,7 +885,7 @@ class Project:
             entry["info"]["stdout"] = out.getvalue()[-4000:]
         return entry
 
-    def _eval_code(self, spec: dict, stack: tuple):
+    def _eval_code(self, spec: dict, stack: tuple, extras: dict | None = None):
         import build123d as bd
 
         ns: dict[str, Any] = {}
@@ -885,6 +955,8 @@ class Project:
         if not code.strip():
             raise PartError("Part has no code yet")
         exec(compile(code, f"<part {spec['name']}>", "exec"), ns)
+        if extras is not None:
+            self._collect_extras(ns, spec, extras)
         result = ns.get("result")
         if result is None:
             # fall back to the last BuildPart context in the namespace
@@ -958,9 +1030,40 @@ class Project:
         V = V + np.array([x, y, z])
         return V, F
 
+    @staticmethod
+    def _collect_extras(ns: dict, spec: dict, extras: dict) -> None:
+        """Optional outputs of a part's code besides `result`:
+        assembled - the part (a shape), or its pieces (a dict name -> shape, or a list), in the assembled
+                    position: they appear in the assembly as '<part>' or '<part>/<name>'.
+        pause_at  - heights (mm, in the part's own coordinates) where the print must pause before the next
+                    layer, e.g. to drop a magnet or nut into a closed cavity; slice_plate inserts the pauses."""
+        import build123d as bd
+
+        a = ns.get("assembled")
+        if a is not None:
+            if isinstance(a, dict):
+                items = {str(k): v for k, v in a.items()}
+            elif isinstance(a, (list, tuple)):
+                items = {str(i + 1): v for i, v in enumerate(a)}
+            else:
+                items = {"": a}
+            for k, v in items.items():
+                if isinstance(v, bd.BuildPart):
+                    items[k] = v.part
+                if not isinstance(items[k], bd.Shape):
+                    raise PartError(f"`assembled` must be a shape, a list or a dict of shapes (got {type(v).__name__}"
+                                    f"{' for ' + repr(k) if k else ''})")
+            extras["assembled"] = items
+        pz = ns.get("pause_at")
+        if pz is not None:
+            vals = [pz] if isinstance(pz, (int, float)) else list(pz)
+            x, y, z, rx, ry, rz = spec.get("location") or [0] * 6
+            if rx or ry:
+                raise PartError("pause_at can't be combined with a tilted location (rotation about X or Y)")
+            extras["pause_at"] = sorted({round(float(v) + float(z), 3) for v in vals})
+
     def assembly_summary(self) -> list[dict]:
-        return [{**self.find_assembly_item(a["name"]), "info": self.build_assembly_item(a["name"])["info"]}
-                for a in self.assembly]
+        return [{**a, "info": self.build_assembly_item(a["name"])["info"]} for a in self.assembly_specs()]
 
     def build_all(self) -> dict[str, dict]:
         return {p["name"]: self.build(p["name"]) for p in self.parts}

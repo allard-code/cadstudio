@@ -297,8 +297,7 @@ def render_assembly_png(proj: Project, view: str = "iso", size: int = 1000, item
     `explode` vector). section: 'x' | 'y' | 'z' cuts the assembly at section_at (mm, default the middle) and
     removes the half facing the viewer (section_flip: the other half); cut faces are drawn red."""
     errors, specs, meshes = [], [], []
-    for a in proj.assembly:
-        s = proj.find_assembly_item(a["name"])
+    for s in proj.assembly_specs():
         if items and s["name"] not in items:
             continue
         if not items and not s["visible"]:

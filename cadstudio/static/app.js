@@ -306,6 +306,7 @@ function renderAsm() {
   $("#asmTab").classList.toggle("on", S.asm);
   $("#asmPanel").classList.toggle("hidden", !S.asm);
   for (const id of ["#plateTabs", "#plateAdd", "#plateDel", "#plateArrange"]) $(id).classList.toggle("hidden", S.asm);
+  if (S.asm) $("#printBar").classList.add("hidden");
   const box = $("#asmItems"); box.innerHTML = "";
   const ghosts = asmGhosts();
   for (const a of items) {
@@ -329,7 +330,7 @@ function setAsm(on) {
   S.asm = on && asmItems().length > 0;
   history.replaceState(null, "", S.asm ? "#assembly" : location.pathname + location.search);
   if (S.asm && S.selected) { S.selected = null; renderParts(); renderInspector(); }
-  clearMeasure(); renderAsm(); syncSceneProps(); setView("fit");
+  clearMeasure(); renderAsm(); syncSceneProps(); setView("fit"); refreshPrintBar();
 }
 $("#asmTab").onclick = () => setAsm(!S.asm);
 $("#asmExplode").oninput = (e) => { S.asmExplode = +e.target.value / 100; syncAsm(); updateDims(); };
@@ -848,8 +849,52 @@ $("#exportStl").onclick = () => doExport("stl");
 $("#exportStep").onclick = () => doExport("step");
 
 // ------------------------------------------------------------------ build plates (beds)
+// ------------------------------------------------------------------ print bar (slice + send via Home Assistant)
+const printPlate = () => (plateCount() === 1 ? 1 : S.plate);
+let printSeq = 0;
+function showSlice(last) {
+  const info = $("#sliceInfo");
+  if (!last) { info.textContent = ""; info.classList.remove("old"); $("#printBtn").classList.add("hidden"); return; }
+  const bits = [last.print_time, last.filament_g ? `${last.filament_g} g` : ""];
+  if (last.pauses) bits.push(t("print.pauses", { n: last.pauses }));
+  info.textContent = bits.filter(Boolean).join(" · ") + (last.outdated ? ` (${t("print.outdated")})` : "");
+  info.classList.toggle("old", !!last.outdated);
+  $("#printBtn").classList.toggle("hidden", !S.printHA || last.outdated);
+}
+async function refreshPrintBar() {
+  const seq = ++printSeq;
+  const bar = $("#printBar");
+  if (!S.project || S.asm) { bar.classList.add("hidden"); return; }
+  const k = printPlate();
+  try {
+    const st = await api(`/api/printing?plate=${k || 1}`);
+    if (seq !== printSeq) return;
+    S.printHA = st.home_assistant;
+    bar.classList.toggle("hidden", !st.slicer);
+    $("#sliceBtn").disabled = !k;
+    if (!k) { $("#sliceInfo").textContent = t("print.pickbed"); $("#printBtn").classList.add("hidden"); return; }
+    showSlice(st.last);
+  } catch { bar.classList.add("hidden"); }
+}
+$("#sliceBtn").onclick = async () => {
+  const k = printPlate(); if (!k) return;
+  $("#sliceBtn").disabled = true; $("#sliceInfo").textContent = t("print.busy"); $("#printBtn").classList.add("hidden");
+  try {
+    const r = await api("/api/slice", { method: "POST", body: JSON.stringify({ plate: k, one_filament: true }) });
+    showSlice(r.last);
+    for (const w of r.warnings || []) toast(w, "err");
+  } catch (e) { toast(e.message, "err", 9000); $("#sliceInfo").textContent = ""; }
+  finally { $("#sliceBtn").disabled = false; }
+};
+$("#printBtn").onclick = async () => {
+  const k = printPlate(); if (!k || !confirm(t("print.confirm", { i: k }))) return;
+  try { await api("/api/print", { method: "POST", body: JSON.stringify({ plate: k }) }); toast(t("print.sent")); }
+  catch (e) { toast(e.message, "err", 9000); }
+};
+
 function renderPlates() {
   if (!S.project) return;
+  refreshPrintBar();
   const n = plateCount(); const over = overfullPlates();
   const box = $("#plateTabs"); box.innerHTML = "";
   const mk = (label, k, title) => {

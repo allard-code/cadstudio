@@ -155,7 +155,11 @@ test strip with engraved clearances: print it once and use the clearance that fi
 
 ### Assembly view
 
-Show how the printed parts go together. Claude adds assembly items with `set_assembly_item(name, code)`: the same
+Show how the printed parts go together. The easiest way for printed parts: next to `result` (how the part lies
+on the bed), the part's code also sets `assembled` (where it sits in the finished model), e.g.
+`assembled = Pos(0, 0, 25) * chassis` and `result = Rot(180, 0, 0) * chassis`. Several pieces of one part
+go in a dict: `assembled = {"left": ..., "right": ...}`.
+ Claude adds assembly items with `set_assembly_item(name, code)`: the same
 build123d code as a part, but in the assembled position (a part printed upside down is rotated back, for example),
 and also reference objects that are never printed, such as a motor or a piece of rail. Assembly items are never
 exported, sliced or arranged.
@@ -168,8 +172,15 @@ exported, sliced or arranged.
   `http://…/#assembly` opens the editor straight in this view.
 - `check_assembly_fit` measures overlap and clearance between all items, so parts that would jam show up first.
 
+### Print pauses
+
+To enclose a magnet or nut, subtract `magnet_pocket()` below the surface and set `pause_at = [z]` in the part's
+code (the top of the cavity, mm above the bed). `slice_plate` then pauses the print before the first layer that
+closes the cavity; drop the magnet in and resume.
+
 ### Printing via Home Assistant
 
+In the editor, *Slice* in the bed bar slices the shown bed and *Print* sends it.
 `send_to_printer(plate=N)` uploads the G-code from `slice_plate` to Home Assistant (`/api/file_upload`) and fires
 the event `cadstudio_print_request` with `file_id`, `filename`, `project`, `plate`, `material`, `materials`,
 `print_time` and `filament_g`. An automation in Home Assistant decides what happens next — for example: ask on

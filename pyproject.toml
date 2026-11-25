@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cadstudio"
-version = "0.6.0"
+version = "0.7.0"
 description = "Parametric CAD editor + MCP server for Claude, with multi-colour 3MF export for Orca/Bambu/Anycubic/Prusa slicers"
 readme = "README.md"
 license = "GPL-3.0-or-later"
