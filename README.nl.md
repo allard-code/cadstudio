@@ -73,7 +73,13 @@ Voorbeeldvraag: *"Maak een bakje van 80×50×30 mm met 2 mm wand, afgeronde hoek
   hulpobjecten zoals een motor of rails; die worden nooit geprint). De knop *⚙ Samenstel* onder de 3D-weergave
   toont het; per onderdeel tonen/doorzichtig, schuif *Uit elkaar*, *Doorsnede* om het open te snijden en
   *Afbeelding (PNG)* om het huidige aanzicht te downloaden. `render_assembly` / `export_assembly_png` doen
-  hetzelfde voor Claude. Met `…/#assembly` open je de editor meteen in het samenstel.
+  hetzelfde voor Claude. Met `…/#assembly` open je de editor meteen in het samenstel. `check_assembly_fit` meet
+  de overlap en speling tussen alle onderdelen, zodat delen die zouden klemmen vooraf opvallen.
+- **Controles:** `check_floating` (zwevende delen), `check_wall_thickness` (dunne wanden) en `check_bridges`
+  (te lange overspanningen die doorzakken).
+- **Hulpfuncties:** in elke onderdeelcode zonder import beschikbaar: `spur_gear`, `gear_centre_distance`,
+  `d_hole`, `d_shaft`, `teardrop`, `pin`, `pin_hole`, `screw_boss`, `magnet_pocket` en `tolerance_coupon`
+  (proefstrip met ingegraveerde spelingen).
 - **Taal:** de editor is Engels- en Nederlandstalig; wissel met de EN/NL-keuze rechtsboven.
 
 ## Beveiliging

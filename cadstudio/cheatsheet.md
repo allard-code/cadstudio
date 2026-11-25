@@ -112,6 +112,20 @@ result = mesh_boolean("ref", Cylinder(3, 20), "subtract")   # "union" | "subtrac
 * It can't be exported to STEP (no BRep solid, same as a plain imported mesh) - 3MF/STL and the preview work fine.
 * Needs the meshes to be reasonably watertight; a badly broken import may fail with an error instead of a result.
 
+## Ready-made print helpers (no import needed)
+```python
+spur_gear(module, teeth, width, bore_r=None, bore_flat=None)   # involute gear along Z, z=0..width
+gear_centre_distance(module, teeth_a, teeth_b, clearance=0.15)  # axis distance of two meshing gears
+d_hole(r, flat_from_centre, h, clearance=0.2)    # D-hole along Z (centred), flat on -X
+d_shaft(r, flat_from_centre, length)             # D-shaft along Z from z=0, chamfered ends
+teardrop(r, length, axis="x", tip="up")          # horizontal hole without support (tip="down" if printed flipped)
+pin(r, length); pin_hole(r, depth, clearance=0.2, from_z=0)
+screw_boss(outer_r, hole_r, height)              # self-tapper boss, 1.5 mm closed on top
+magnet_pocket(d, h)                              # cavity to enclose a magnet: pause the print above it
+tolerance_coupon(r, flat_from_centre=None)       # test strip: holes with 0.10-0.30 clearance, engraved
+```
+Your own shared code may define functions with the same names; those win.
+
 ## Printability (FDM, 0.4 nozzle)
 * Wall thickness ≥ 1.2 mm (3 lines), preferably 1.6–2.0. Check with `check_wall_thickness()` - it flags any
   spot thinner than that (default 1.2 mm) and gives you its location.
