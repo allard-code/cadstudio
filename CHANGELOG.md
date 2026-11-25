@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-25
+
+### Added
+- Print settings in the editor: a *Print settings* panel (left, collapsible, with a one-line summary) for the
+  project and a *Print settings (this part)* section in the inspector. Pick a profile, override single values
+  (an empty field follows the profile or the slicer default, ✕ removes an override, *Reset* clears all); changes
+  made by Claude show up live. REST: `GET /api/print-settings/meta`, `PUT /api/print-settings`.
+- `set_print_settings(unset=[...])` removes single overrides.
+
 ## [0.8.0] - 2026-11-25
 
 ### Added

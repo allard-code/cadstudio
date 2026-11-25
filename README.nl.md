@@ -82,7 +82,8 @@ Voorbeeldvraag: *"Maak een bakje van 80×50×30 mm met 2 mm wand, afgeronde hoek
   en kan die oriëntatie meteen toepassen. `set_print_settings` legt printinstellingen vast op basis van waar het
   onderdeel voor is (profielen `functional`, `strong`, `watertight`, `decorative`, `draft`, `fine`), voor het
   hele project of per onderdeel. Ze komen als object-/onderdeelinstellingen in de 3MF, dus de slicer opent het
-  bestand er meteen mee, en `slice_plate` gebruikt ze ook.
+  bestand er meteen mee, en `slice_plate` gebruikt ze ook. In de editor staan ze in het paneel
+  *Printinstellingen* (links) en per onderdeel in de inspector; een leeg veld volgt het profiel.
 - **Hulpfuncties:** in elke onderdeelcode zonder import beschikbaar: `spur_gear`, `gear_centre_distance`,
   `d_hole`, `d_shaft`, `teardrop`, `pin`, `pin_hole`, `screw_boss`, `magnet_pocket` en `tolerance_coupon`
   (proefstrip met ingegraveerde spelingen).

@@ -76,3 +76,23 @@ def test_version_endpoint(client, monkeypatch):
     v = client.get("/api/version").json()
     assert v["version"] == __version__ and v["commit"] is None
     assert client.get("/health").json()["version"] == __version__
+
+
+def test_print_settings_api(client, proj, monkeypatch):
+    monkeypatch.delenv("CADSTUDIO_TOKEN", raising=False)
+    meta = client.get("/api/print-settings/meta").json()
+    assert "functional" in meta["profiles"] and meta["fields"]["layer_height_mm"]["object_only"]
+    assert "gyroid" in meta["infill_patterns"]
+    client.put("/api/parts/a", json={"code": BOX})
+    r = client.put("/api/print-settings", json={"profile": "strong", "overrides": {"infill_percent": 20, "wall_loops": 3}})
+    assert r.status_code == 200 and r.json()["print"] == {"profile": "strong",
+                                                          "overrides": {"infill_percent": 20.0, "wall_loops": 3}}
+    r = client.put("/api/print-settings", json={"unset": ["wall_loops"]})
+    assert r.json()["print"]["overrides"] == {"infill_percent": 20.0}
+    r = client.put("/api/print-settings", json={"part": "a", "profile": "decorative"})
+    assert next(p for p in r.json()["parts"] if p["name"] == "a")["print"] == {"profile": "decorative"}
+    bad = client.put("/api/print-settings", json={"part": "a", "overrides": {"supports": True}})
+    assert bad.status_code == 422 and "whole object" in bad.json()["detail"]
+    assert client.put("/api/print-settings", json={"unset": ["nope"]}).status_code == 422
+    r = client.put("/api/print-settings", json={"clear": True})
+    assert r.json()["print"] == {}

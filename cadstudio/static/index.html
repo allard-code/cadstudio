@@ -66,6 +66,13 @@
       <h3 data-i18n="parts"></h3>
       <div id="parts"></div>
     </section>
+    <section id="psSection">
+      <details id="psDetails">
+        <summary><h3><span data-i18n="ps.title"></span> <span class="muted" data-i18n-title="ps.hint">ⓘ</span></h3>
+          <span id="psSummary" class="pssum"></span></summary>
+        <div id="psForm" class="psform"></div>
+      </details>
+    </section>
     <section>
       <h3><span data-i18n="common"></span> <span class="muted" data-i18n-html="common.hint"></span></h3>
       <div class="codewrap small">
@@ -174,6 +181,10 @@
       <input data-s="0" title="scale X"><input data-s="1" title="scale Y"><input data-s="2" title="scale Z">
     </div>
   </div>
+  <details class="row" id="pPrintWrap">
+    <summary><span data-i18n="ps.part"></span> <span id="pPrintSum" class="pssum"></span></summary>
+    <div id="pPrint" class="psform"></div>
+  </details>
   <div class="row codewrap">
     <label><span data-i18n="insp.code"></span> <span class="muted" data-i18n-html="insp.code.hint"></span></label>
     <textarea id="pCode" spellcheck="false"></textarea>
