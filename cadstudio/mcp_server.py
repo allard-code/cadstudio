@@ -54,7 +54,8 @@ Workflow:
 5. Build plates: if the parts don't all fit on one 250x250 bed (e.g. two halves of a spool), put them on
    separate plates - set_part(..., plate=2) or arrange_plates() to spread them automatically. Parts keep
    their location relative to their own plate; the editor and export lay plates out side by side.
-6. export_3mf() for the slicer (all plates in one file; split_plates=True for one file per plate).
+6. export_3mf() for the slicer. With several plates use plate=N (one bed, centred) or split_plates=True
+   (one file per bed): Orca / Bambu / Anycubic Slicer Next put beds 2+ of a single multi-plate file beside the bed.
    Give the user the download_url and tell them which filament slot needs which colour.
    Or slice_plate(plate=N) for ready-to-print G-code from the bundled OrcaSlicer (printer profile from
    CADSTUDIO_PRINTER); one_filament=True prints the whole plate from a single spool.
@@ -681,9 +682,10 @@ def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str 
                filament_price_eur_kg: float | None = None, print_rate_cm3_per_hour: float | None = 15.0,
                plate: int | None = None, split_plates: bool = False, pauses: bool = True) -> dict:
     """Export to 3MF.
-    Build plates: by default every plate goes into one file (orca flavour: real slicer plates, each plate's
-    parts centred on it). plate=N exports only that plate; split_plates=True writes one file per plate
-    (response: paths + download_urls).
+    Build plates: plate=N exports only that plate (centred on the bed); split_plates=True writes one file per
+    plate (response: paths + download_urls) - use one of these when the project has several plates. Without
+    them every plate goes into one file (orca flavour: plate grid + plate blocks), but Orca / Bambu Studio /
+    Anycubic Slicer Next import such a file as geometry on one plate and leave plates 2+ beside the bed.
     mode: "assembly" = all parts as one object with one extruder/filament slot per part (multi-colour print);
           "objects"  = every part a separate object.
     flavor: "orca" (Anycubic Slicer Next, OrcaSlicer, Bambu Studio) or "prusa" (PrusaSlicer).

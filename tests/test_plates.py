@@ -98,7 +98,8 @@ def test_multi_plate_3mf(proj):
     proj.upsert_part("side_b", code=DISC, filament=1, color="#1D3557", plate=2)
     res = export_3mf(proj, mode="objects")
     assert res["plates"] == {"1": ["side_a"], "2": ["side_b"]}
-    assert not res["warnings"]
+    # Orca / Anycubic import a file without project config on one plate: plate 2 would land beside the bed
+    assert any("beside the build plate" in w for w in res["warnings"])
     with zipfile.ZipFile(res["path"]) as z:
         cfg = ET.fromstring(z.read("Metadata/model_settings.config"))
     plates = cfg.findall("plate")
@@ -115,9 +116,17 @@ def test_single_plate_and_split_export(proj):
     proj.upsert_part("side_b", code=DISC, plate=2)
     one = export_3mf(proj, plate=2)
     assert one["parts"] == ["side_b"]
+    assert not any("beside the build plate" in w for w in one["warnings"])
+    scene = trimesh.load(one["path"])  # a single plate sits on the bed, centred
+    lo, hi = scene.bounds
+    assert lo[0] >= 0 and lo[1] >= 0 and hi[0] <= P.BED[0] and hi[1] <= P.BED[1]
     split = export_3mf(proj, split_plates=True)
     assert len(split["paths"]) == 2 and all(p.endswith((".3mf",)) for p in split["paths"])
     assert "plate1" in split["paths"][0] and "plate2" in split["paths"][1]
+    for path in split["paths"]:  # every per-plate file is on the bed
+        lo, hi = trimesh.load(path).bounds
+        assert lo[0] >= 0 and lo[1] >= 0 and hi[0] <= P.BED[0] and hi[1] <= P.BED[1]
+    assert not any("beside the build plate" in w for w in split["warnings"])
 
 
 def test_render_lays_plates_out(proj):
