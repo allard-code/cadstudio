@@ -19,7 +19,7 @@ jobs:
       version: ${{ steps.ver.outputs.version }}
       new: ${{ steps.ver.outputs.new }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: ver
         name: Version from pyproject.toml (new = no v<version> tag yet)
         run: |
@@ -71,7 +71,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Extract changelog section
         run: |
           v="${{ needs.build.outputs.version }}"
