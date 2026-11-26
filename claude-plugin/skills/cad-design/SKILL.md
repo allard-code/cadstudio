@@ -61,7 +61,8 @@ the exported 3MF carries the pause when opened as a project in the slicer).
 - Clearance between separate parts 0.2–0.3 mm per side. Does it fit the bed? Use `measure`.
 - Parts that don't fit on one bed together (e.g. two 200 mm spool halves): give each its own build plate
   (`set_part(..., plate=2)`) or call `arrange_plates()` — never park a part off the bed. `export_3mf` then writes
-  all plates into one file (`split_plates=True` for one file per plate).
+  all plates into one project file — tell the user to open it as a project (File → Open project), not import it
+  as geometry (`split_plates=True` for one file per plate).
 
 ## User files
 

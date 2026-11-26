@@ -57,4 +57,13 @@ jobs:
           # OrcaSlicer CLI inside the image: slice a cube with the default printer profile
           docker exec cs python -m cadstudio.slicer | tee slice.json
           grep -q '"filament_g"' slice.json
+          # a two-bed export is a slicer project built from the image's printer profiles
+          docker exec -e CADSTUDIO_HOME=/tmp/ci-mp cs python -c "
+          from cadstudio import project as P; from cadstudio.export3mf import export_3mf
+          import zipfile, json
+          P.set_current_project('mp'); p = P.get_project('mp')
+          p.upsert_part('a', code='result = Box(20, 20, 5)'); p.upsert_part('b', code='result = Box(20, 20, 5)', plate=2)
+          r = export_3mf(p); cfg = json.loads(zipfile.ZipFile(r['path']).read('Metadata/project_settings.config'))
+          assert cfg['printer_settings_id'] and len(cfg['filament_settings_id']) >= 1 and len(cfg) > 300, cfg.keys()
+          print(r['project_settings'])"
           docker logs cs

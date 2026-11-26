@@ -144,8 +144,11 @@ Example prompts:
 Parts that don't fit on one bed together (say the two halves of a spool) go on separate build plates. The bed bar
 under the 3D view switches between beds; *Arrange* spreads all printable parts over as many beds as needed. A
 part's position is relative to the centre of its own bed. *Export 3MF* puts every bed in one file as separate
-slicer plates (Orca flavour), or, with "1 file per bed", writes one 3MF per bed — use that for PrusaSlicer, which
-has no plates.
+slicer plates (Orca flavour). That file is a slicer project: it also carries the settings for the server's printer
+(`CADSTUDIO_PRINTER`, its standard process, a filament per slot in the parts' colours), because Orca, Bambu Studio
+and Anycubic Slicer Next only keep the plates of a project — **open it as a project** (*File → Open project*, or
+*Open as project* when asked); importing it as geometry puts every bed on bed 1. The printer profiles ship in the
+Docker image; without them, or for PrusaSlicer (no plates), use "1 file per bed".
 
 ### Print helpers
 
