@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-26
+
+### Fixed
+- Multi-plate projects no longer end up beside the build plate by default in the editor: the export menu now
+  defaults to one 3MF per bed. Orca, Bambu Studio and Anycubic Slicer Next import a 3MF without project
+  settings as geometry on a single plate, so beds 2+ of an "all beds in one file" export were placed beside the
+  bed. That option is still there, now last and labelled with this caveat, and `export_3mf` warns about it.
+  The MCP instructions and `export_3mf` description now point to `plate=N` / `split_plates=True`.
+
 ## [0.10.0] - 2026-11-25
 
 ### Added

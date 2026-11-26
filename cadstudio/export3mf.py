@@ -14,8 +14,11 @@ mode="objects"  writes each part as its own object (several separate prints on o
 
 Build plates: every part has a plate number. In the orca flavour all plates go into one file - objects are
 placed in the slicer's plate grid (same layout rule as Orca/Bambu) and Metadata/model_settings.config gets a
-<plate> block per plate listing its objects. split_plates=True writes one 3MF per plate instead (each
-centred on plate 1), which every slicer understands.
+<plate> block per plate listing its objects. Orca / Bambu Studio / Anycubic Slicer Next only rebuild those
+plates when the file also carries a full project config (printer + process + filament presets), which
+CAD-Studio does not write: they import it as geometry, keep one plate and leave plates 2+ beside the bed.
+split_plates=True (one 3MF per plate) or plate=N (one plate, centred on the bed) is what those slicers open
+correctly; the one-file layout is kept for tools that read the plate blocks themselves.
 """
 from __future__ import annotations
 
@@ -123,6 +126,10 @@ def _slot_warnings(items) -> list[str]:
     return w
 
 
+MULTI_PLATE_WARNING = ("Several beds in one 3MF: Orca, Bambu Studio and Anycubic Slicer Next open a file without "
+                       "project settings as geometry on one plate, so beds 2+ end up beside the build plate. "
+                       "Export one file per bed (split_plates) or only one bed (plate) instead.")
+
 FIRST_LAYER_MM = 0.2  # first layer height of the slicer's default process (Orca / Anycubic / Prusa 0.4 nozzle)
 
 
@@ -213,6 +220,8 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
         plates_used = [plate]
     else:
         items, warnings, plates_used = _place_plates(items, count)
+    if flavor == "orca" and len(plates_used) > 1:
+        warnings.append(MULTI_PLATE_WARNING)
     if flavor == "prusa" and len(plates_used) > 1:
         warnings.append("PrusaSlicer has no build plates: all plates are laid out side by side on one bed. "
                         "Use split_plates (one file per plate) instead.")
