@@ -54,8 +54,9 @@ Workflow:
 5. Build plates: if the parts don't all fit on one 250x250 bed (e.g. two halves of a spool), put them on
    separate plates - set_part(..., plate=2) or arrange_plates() to spread them automatically. Parts keep
    their location relative to their own plate; the editor and export lay plates out side by side.
-6. export_3mf() for the slicer. With several plates use plate=N (one bed, centred) or split_plates=True
-   (one file per bed): Orca / Bambu / Anycubic Slicer Next put beds 2+ of a single multi-plate file beside the bed.
+6. export_3mf() for the slicer. Several plates go into one project file (one plate per bed, with the printer,
+   process and filament settings): tell the user to OPEN it as a project (File > Open project / "Open as
+   project"), not import it as geometry. Or plate=N (one bed, centred) / split_plates=True (one file per bed).
    Give the user the download_url and tell them which filament slot needs which colour.
    Or slice_plate(plate=N) for ready-to-print G-code from the bundled OrcaSlicer (printer profile from
    CADSTUDIO_PRINTER); one_filament=True prints the whole plate from a single spool.
@@ -680,12 +681,18 @@ def export_assembly_png(view: str = "iso", items: list[str] | None = None, hide:
 def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str = "orca",
                parts: list[str] | None = None, filament_density_g_cm3: float = 1.24,
                filament_price_eur_kg: float | None = None, print_rate_cm3_per_hour: float | None = 15.0,
-               plate: int | None = None, split_plates: bool = False, pauses: bool = True) -> dict:
+               plate: int | None = None, split_plates: bool = False, pauses: bool = True,
+               materials: list[str] | None = None) -> dict:
     """Export to 3MF.
-    Build plates: plate=N exports only that plate (centred on the bed); split_plates=True writes one file per
-    plate (response: paths + download_urls) - use one of these when the project has several plates. Without
-    them every plate goes into one file (orca flavour: plate grid + plate blocks), but Orca / Bambu Studio /
-    Anycubic Slicer Next import such a file as geometry on one plate and leave plates 2+ beside the bed.
+    Build plates: by default every plate goes into one file. In the orca flavour that file is a slicer project:
+    plate blocks plus Metadata/project_settings.config (full settings for the server's printer, CADSTUDIO_PRINTER,
+    its standard process and a filament per slot - materials: "PLA", "PETG", ... or a preset name per slot,
+    default PLA - with the parts' colours). Orca / Bambu Studio / Anycubic Slicer Next then show one plate per
+    bed, but only when the file is OPENED AS A PROJECT (File > Open project, or "Open as project" when asked);
+    importing it as geometry puts every bed on bed 1. Tell the user that, and that the slicer switches to the
+    printer/filament presets in the file. Response "project_settings" names them; if it is missing (no slicer
+    profiles on the server) a warning says so - then use split_plates=True (one file per plate) or plate=N
+    (only that plate, centred on the bed).
     mode: "assembly" = all parts as one object with one extruder/filament slot per part (multi-colour print);
           "objects"  = every part a separate object.
     flavor: "orca" (Anycubic Slicer Next, OrcaSlicer, Bambu Studio) or "prusa" (PrusaSlicer).
@@ -705,7 +712,7 @@ def export_3mf(filename: str | None = None, mode: str = "assembly", flavor: str 
     res = _export_3mf(proj, filename, mode=mode, flavor=flavor, only=parts, thumbnail=thumbnail(proj),
                        filament_density_g_cm3=filament_density_g_cm3, filament_price_eur_kg=filament_price_eur_kg,
                        print_rate_cm3_per_hour=print_rate_cm3_per_hour, plate=plate, split_plates=split_plates,
-                       pauses=pauses)
+                       pauses=pauses, materials=materials)
     if "paths" in res:
         res["download_urls"] = [links.download_url(p) for p in res["paths"]]
     else:

@@ -14,15 +14,16 @@ mode="objects"  writes each part as its own object (several separate prints on o
 
 Build plates: every part has a plate number. In the orca flavour all plates go into one file - objects are
 placed in the slicer's plate grid (same layout rule as Orca/Bambu) and Metadata/model_settings.config gets a
-<plate> block per plate listing its objects. Orca / Bambu Studio / Anycubic Slicer Next only rebuild those
-plates when the file also carries a full project config (printer + process + filament presets), which
-CAD-Studio does not write: they import it as geometry, keep one plate and leave plates 2+ beside the bed.
-split_plates=True (one 3MF per plate) or plate=N (one plate, centred on the bed) is what those slicers open
-correctly; the one-file layout is kept for tools that read the plate blocks themselves.
+<plate> block per plate listing its objects. Orca / Bambu Studio / Anycubic Slicer Next only use those plates
+when the file is a project, i.e. it carries Metadata/project_settings.config (a full printer + process + filament
+config); without it they import the objects as geometry around bed 1. So a multi-plate file gets that config
+(projectconfig.py, from OrcaSlicer's profiles for CADSTUDIO_PRINTER - bundled in the Docker image) and must be
+opened as a project. Without the profiles, split_plates=True (one 3MF per plate) or plate=N is the way.
 """
 from __future__ import annotations
 
 import datetime as _dt
+import json
 import math
 import zipfile
 from pathlib import Path
@@ -31,6 +32,7 @@ from xml.sax.saxutils import escape, quoteattr
 import numpy as np
 
 from . import printsettings as PS
+from . import projectconfig
 from .project import BED, PartError, Project, exportable_meshes, mesh_volume, plate_origin, slugify
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
@@ -126,9 +128,10 @@ def _slot_warnings(items) -> list[str]:
     return w
 
 
-MULTI_PLATE_WARNING = ("Several beds in one 3MF: Orca, Bambu Studio and Anycubic Slicer Next open a file without "
-                       "project settings as geometry on one plate, so beds 2+ end up beside the build plate. "
-                       "Export one file per bed (split_plates) or only one bed (plate) instead.")
+MULTI_PLATE_WARNING = ("Several beds in one 3MF without project settings (OrcaSlicer's printer profiles are not "
+                       "available on this server): Orca, Bambu Studio and Anycubic Slicer Next open it as geometry "
+                       "on one plate, so beds 2+ end up beside the build plate. Export one file per bed "
+                       "(split_plates) or only one bed (plate) instead.")
 
 FIRST_LAYER_MM = 0.2  # first layer height of the slicer's default process (Orca / Anycubic / Prusa 0.4 nozzle)
 
@@ -181,14 +184,19 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
                filament_density_g_cm3: float = 1.24, filament_price_eur_kg: float | None = None,
                print_rate_cm3_per_hour: float | None = 15.0, plate: int | None = None,
                split_plates: bool = False, filament_map: dict[int, int] | None = None,
-               print_settings: dict | None = None, pauses: bool = True) -> dict:
+               print_settings: dict | None = None, pauses: bool = True, project_settings: bool | None = None,
+               materials: list[str] | None = None) -> dict:
     """plate: export only that plate (centred on a single bed). split_plates: one file per plate.
     pauses: write the parts' `pause_at` heights as per-layer pauses (Orca/Bambu/Anycubic:
     Metadata/custom_gcode_per_layer.xml, PrusaSlicer: Metadata/Prusa_Slicer_custom_gcode_per_print_z.xml);
     the slicer applies them when the file is opened as a project. They assume the exported layer height.
     filament_map: renumber filament slots in the file, e.g. {1: 1, 2: 1} prints everything with filament 1.
     print_settings: object-level print settings (friendly names, see printsettings.FIELDS); default: the
-    project's own (profile + overrides). Per-part settings always come from the parts."""
+    project's own (profile + overrides). Per-part settings always come from the parts.
+    project_settings (orca flavour): write Metadata/project_settings.config - a full printer + process +
+    filament config for CADSTUDIO_PRINTER - so the slicer opens the file as a project with every bed on its own
+    plate. None = only when the file holds several plates. materials: material or filament preset per slot
+    (default PLA) for that config."""
     path = Path(path) if path else proj.dir / "exports" / f"{proj.name}.3mf"
     if path.suffix.lower() != ".3mf":
         path = path.with_suffix(".3mf")
@@ -202,7 +210,7 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
                                       filament_price_eur_kg=filament_price_eur_kg,
                                       print_rate_cm3_per_hour=print_rate_cm3_per_hour, plate=k,
                                       filament_map=filament_map, print_settings=print_settings,
-                                      pauses=pauses))
+                                      pauses=pauses, project_settings=project_settings, materials=materials))
         out = {"paths": [r["path"] for r in results], "flavor": flavor, "mode": mode,
                "plates": {str(k): r for k, r in zip(used, results)},
                "warnings": [w for r in results for w in r["warnings"]],
@@ -220,8 +228,6 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
         plates_used = [plate]
     else:
         items, warnings, plates_used = _place_plates(items, count)
-    if flavor == "orca" and len(plates_used) > 1:
-        warnings.append(MULTI_PLATE_WARNING)
     if flavor == "prusa" and len(plates_used) > 1:
         warnings.append("PrusaSlicer has no build plates: all plates are laid out side by side on one bed. "
                         "Use split_plates (one file per plate) instead.")
@@ -229,6 +235,20 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
     object_name = object_name or proj.name
     obj_ps = PS.normalize(print_settings) if print_settings is not None else PS.project_settings(proj.data)
     part_ps = {s["name"]: PS.part_settings(s) for s, _, _ in items}
+    proj_cfg = None
+    if flavor == "orca" and (project_settings if project_settings is not None else len(plates_used) > 1):
+        slot_colour: dict[int, str] = {}
+        for s, _, _ in items:
+            slot_colour.setdefault(int(s["filament"]), s["color"])
+        colours = [slot_colour.get(k, "#FFFFFF") for k in range(1, max(slot_colour, default=1) + 1)]
+        proj_cfg = projectconfig.build(colours, materials, process_settings=PS.to_orca(obj_ps))
+        if proj_cfg is None and len(plates_used) > 1:
+            warnings.append(MULTI_PLATE_WARNING)
+        elif proj_cfg is not None and len(plates_used) > 1:
+            warnings.append(f"Open this file as a project (File > Open project, or 'Open as project' when asked) to "
+                            f"get one plate per bed. It carries the settings for {proj_cfg['printer_settings_id']} "
+                            f"with {', '.join(dict.fromkeys(proj_cfg['filament_settings_id']))}; the slicer switches "
+                            f"to them. Importing it as geometry only puts every bed on bed 1.")
 
     # material table: one entry per part colour
     colors = []
@@ -355,6 +375,8 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
             z.writestr("Metadata/thumbnail.png", thumbnail)
         if pause_file:
             z.writestr(*pause_file)
+        if proj_cfg is not None:
+            z.writestr("Metadata/project_settings.config", json.dumps(proj_cfg, indent=4))
 
     fil = {}
     grams_per_slot: dict[int, float] = {}
@@ -375,6 +397,11 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
               "total_g_solid_estimate": round(total_g, 1)}
     if pause_info:
         result["pauses"] = pause_info
+    if proj_cfg is not None:
+        result["project_settings"] = {"printer": proj_cfg["printer_settings_id"],
+                                      "process": proj_cfg["print_settings_id"],
+                                      "filaments": proj_cfg["filament_settings_id"],
+                                      "filament_colours": proj_cfg["filament_colour"]}
     if obj_ps or any(part_ps.values()):
         result["print_settings"] = {"object": obj_ps, "parts": {k: v for k, v in part_ps.items() if v}}
     if filament_price_eur_kg is not None:

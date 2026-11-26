@@ -93,13 +93,14 @@ def test_arrange_keeps_referenced_groups_in_place(proj):
     assert proj.part_plate("base") == proj.part_plate("logo") != proj.part_plate("other")
 
 
-def test_multi_plate_3mf(proj):
+def test_multi_plate_3mf(proj, monkeypatch, tmp_path):
+    monkeypatch.setenv("CADSTUDIO_ORCA_PROFILES", str(tmp_path / "no-profiles"))
     proj.upsert_part("side_a", code=DISC, filament=1, color="#1D3557")
     proj.upsert_part("side_b", code=DISC, filament=1, color="#1D3557", plate=2)
     res = export_3mf(proj, mode="objects")
     assert res["plates"] == {"1": ["side_a"], "2": ["side_b"]}
-    # Orca / Anycubic import a file without project config on one plate: plate 2 would land beside the bed
-    assert any("beside the build plate" in w for w in res["warnings"])
+    # without slicer profiles there is no project config, so Orca / Anycubic would import it on one plate
+    assert any("beside the build plate" in w for w in res["warnings"]) and "project_settings" not in res
     with zipfile.ZipFile(res["path"]) as z:
         cfg = ET.fromstring(z.read("Metadata/model_settings.config"))
     plates = cfg.findall("plate")

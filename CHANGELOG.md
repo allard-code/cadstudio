@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-26
+
+### Fixed
+- Several beds in one 3MF now open as separate plates in OrcaSlicer, Bambu Studio and Anycubic Slicer Next. The
+  file is written as a slicer project: next to the plate blocks it carries `Metadata/project_settings.config`, a
+  complete printer + process + filament config built from OrcaSlicer's profiles for `CADSTUDIO_PRINTER` (in the
+  layout the slicer writes itself; checked against a project saved by OrcaSlicer 2.5.2). Without a project
+  config those slicers import the objects as geometry and move them all to bed 1. Verified by opening the file in
+  OrcaSlicer 2.5.2: one plate per bed, every object on its own plate, filament colours per slot from the parts.
+  The file has to be *opened as a project*; the export response says so.
+
+### Changed
+- The editor's export menu defaults to "all beds in 1 project" again (one file per bed and the shown bed only are
+  still there).
+- `export_3mf(project_settings=..., materials=[...])`: force the project config on or off (default: on for
+  multi-plate orca files) and pick the filament per slot (default PLA). The response names the printer, process
+  and filaments in the file. Without the slicer profiles (not in Docker) it warns as before and suggests
+  `split_plates`.
+
 ## [0.10.1] - 2026-11-26
 
 ### Fixed
