@@ -157,8 +157,9 @@ def test_plate_api_and_no_cache(proj):
 
 def test_auto_plate_name():
     assert P.auto_plate_name(["wiel_1", "wiel_2", "as_1", "deck"]) == "wiel x2, as, deck"
-    assert P.auto_plate_name(["koppelarm_V1", "koppelarm_V2", "koppelarm_A1"]) == "koppelarm_V x2, koppelarm_A"
+    assert P.auto_plate_name(["koppelarm_V1", "koppelarm_V2", "koppelarm_A1"]) == "koppelarm_V x2, koppelarm_A1"
     assert P.auto_plate_name([]) == ""
+    assert P.auto_plate_name(["onderstel_v3", "as_1"]) == "onderstel_v3, as"
     long = P.auto_plate_name([f"part{c}" for c in "abcdefghijklmnop"], limit=20)
     assert len(long) <= 25 and long.endswith(tuple("0123456789"))
 
