@@ -153,3 +153,47 @@ def test_plate_api_and_no_cache(proj):
     assert r.json()["arrange"]["plates"] == 2
     assert c.get("/").headers["cache-control"] == "no-store"
     assert c.get("/static/app.js").headers["cache-control"] == "no-cache"
+
+
+def test_auto_plate_name():
+    assert P.auto_plate_name(["wiel_1", "wiel_2", "as_1", "deck"]) == "wiel x2, as, deck"
+    assert P.auto_plate_name(["koppelarm_V1", "koppelarm_V2", "koppelarm_A1"]) == "koppelarm_V x2, koppelarm_A"
+    assert P.auto_plate_name([]) == ""
+    long = P.auto_plate_name([f"part{c}" for c in "abcdefghijklmnop"], limit=20)
+    assert len(long) <= 25 and long.endswith(tuple("0123456789"))
+
+
+def test_plate_names_in_3mf(proj):
+    proj.upsert_part("wiel_1", code=SMALL)
+    proj.upsert_part("wiel_2", code=SMALL, location=[60, 0, 0])
+    proj.upsert_part("deck", code=DISC, plate=2)
+    proj.upsert_part("arm", code=SMALL, plate=3)
+    names = proj.set_plate_name(2, "  loc-dek  ")
+    assert names == {"1": "wiel x2", "2": "loc-dek", "3": "arm"}
+    assert proj.summary()["plate_names"]["2"] == "loc-dek"
+
+    def plate_names(path):
+        with zipfile.ZipFile(path) as z:
+            cfg = ET.fromstring(z.read("Metadata/model_settings.config"))
+        return [p.find("metadata[@key='plater_name']").get("value") for p in cfg.findall("plate")]
+
+    assert plate_names(export_3mf(proj, mode="objects")["path"]) == ["wiel x2", "loc-dek", "arm"]
+    assert plate_names(export_3mf(proj, plate=2)["path"]) == ["loc-dek"]
+    split = export_3mf(proj, split_plates=True)
+    assert [plate_names(p) for p in split["paths"]] == [["wiel x2"], ["loc-dek"], ["arm"]]
+    # empty name = automatic again; removing a plate shifts the names of later plates
+    proj.set_plate_name(3, "armen")
+    proj.set_plate_name(2, "")
+    assert proj.plate_name(2) == "deck"
+    proj.remove_plate(2)
+    assert proj.plate_names == {"2": "armen"}
+
+
+def test_plate_name_api(proj):
+    from cadstudio.web import app
+    c = TestClient(app)
+    proj.upsert_part("side_a", code=DISC)
+    proj.upsert_part("side_b", code=DISC, plate=2)
+    r = c.put("/api/plates/2/name", json={"name": "tweede"})
+    assert r.status_code == 200 and r.json()["plate_names"] == {"1": "side_a", "2": "tweede"}
+    assert c.put("/api/plates/5/name", json={"name": "x"}).status_code >= 400

@@ -340,8 +340,10 @@ def export_3mf(proj: Project, path: str | Path | None = None, mode: str = "assem
                 f'   <metadata key="instance_id" value="0"/>\n'
                 f'   <metadata key="identify_id" value="{o}"/>\n'
                 f'  </model_instance>' for o in plate_members.get(k, []))
+            src = plate if plate is not None else k
+            pname = proj.plate_name(src, [s["name"] for s, _, _ in items if plate is not None or int(s["plate"]) == k])
             cfg.append(f' <plate>\n  <metadata key="plater_id" value="{k}"/>\n'
-                       f'  <metadata key="plater_name" value=""/>\n  <metadata key="locked" value="false"/>\n'
+                       f'  <metadata key="plater_name" value={quoteattr(pname)}/>\n  <metadata key="locked" value="false"/>\n'
                        + (insts + "\n" if insts else "") + " </plate>")
         cfg_name = "Metadata/model_settings.config"
         cfg_xml = '<?xml version="1.0" encoding="UTF-8"?>\n<config>\n' + "\n".join(cfg) + "\n</config>\n"

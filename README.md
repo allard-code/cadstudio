@@ -114,7 +114,7 @@ Example prompts:
 |---|---|
 | Projects | `list_projects`, `new_project`, `open_project`, `get_project`, `set_notes` |
 | Modelling | `set_params`, `set_part`, `update_part`, `add_primitive`, `delete_part` |
-| Build plates | `add_plate`, `remove_plate`, `arrange_plates` (and `plate` on `set_part` / `update_part`) |
+| Build plates | `add_plate`, `remove_plate`, `arrange_plates`, `set_plate_name` (and `plate` on `set_part` / `update_part`) |
 | Inspecting | `measure`, `render_preview`, `check_floating`, `check_wall_thickness`, `check_bridges` |
 | Print preparation | `suggest_orientation` (best side down, optionally for a load direction), `set_print_settings` (profile + overrides, written into the 3MF; also editable in the editor) |
 | Assembly | `set_assembly_item`, `delete_assembly_item`, `render_assembly`, `export_assembly_png`, `check_assembly_fit` |
@@ -142,7 +142,8 @@ Example prompts:
 ### Build plates
 
 Parts that don't fit on one bed together (say the two halves of a spool) go on separate build plates. The bed bar
-under the 3D view switches between beds; *Arrange* spreads all printable parts over as many beds as needed. A
+under the 3D view switches between beds; *Arrange* spreads all printable parts over as many beds as needed. Every bed has a name the slicer shows as the plate name: by default
+made from its parts, or your own (double-click the bed tab). A
 part's position is relative to the centre of its own bed. *Export 3MF* puts every bed in one file as separate
 slicer plates (Orca flavour). That file is a slicer project: it also carries the settings for the server's printer
 (`CADSTUDIO_PRINTER`, its standard process, a filament per slot in the parts' colours), because Orca, Bambu Studio
