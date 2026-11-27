@@ -129,8 +129,8 @@ def auto_plate_name(part_names: list[str], limit: int = 60) -> str:
     bases = [re.sub(r"[_\- ]?\d+$", "", n) or n for n in part_names]
     groups: dict[str, int] = {}
     for n, base in zip(part_names, bases):
-        if bases.count(base) == 1:
-            base = n  # a lone version number is part of the name (onderstel_v3 stays onderstel_v3)
+        if bases.count(base) == 1 and not re.search(r"[_\- ]\d+$", n):
+            base = n  # a lone version number is part of the name (onderstel_v3 stays, as_1 -> as)
         groups[base] = groups.get(base, 0) + 1
     words = [f"{b} x{c}" if c > 1 else b for b, c in groups.items()]
     out = ""
