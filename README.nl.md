@@ -66,7 +66,8 @@ Voorbeeldvraag: *"Maak een bakje van 80×50×30 mm met 2 mm wand, afgeronde hoek
   projectbestand, met de instellingen van je printer, het standaardproces en per slot een filament in de kleur
   van de onderdelen. **Open het als project** (*Bestand → Project openen*, of *Openen als project* als de slicer
   het vraagt); importeer je het alleen als geometrie, dan komen alle bedden op bed 1. Met "1 bestand per bed"
-  krijg je losse bestanden (nodig voor PrusaSlicer, dat geen platen kent).
+  krijg je losse bestanden (nodig voor PrusaSlicer, dat geen platen kent). Elk bed heeft een naam die de slicer
+  als plaatnaam toont: standaard naar de onderdelen erop, of een eigen naam via dubbelklik op het bedtabje.
 - **Export "1 object (multi-color)":** elk deel krijgt een eigen extruder, op dezelfde manier als Bambu Studio en OrcaSlicer dat opslaan.
 - **Printen via Home Assistant:** `slice_plate` maakt G-code, `send_to_printer` uploadt die naar Home Assistant en
   vuurt het event `cadstudio_print_request` af (met `file_id`, materiaal, printtijd en gram). Een automation kiest

@@ -347,6 +347,14 @@ def remove_plate(plate: int):
     return proj.summary()
 
 
+@app.put("/api/plates/{plate}/name")
+def set_plate_name(plate: int, body: dict = Body(default={})):
+    """body: {"name": "..."}; empty = automatic name from the parts on the plate."""
+    proj = _proj()
+    proj.set_plate_name(plate, body.get("name", ""))
+    return proj.summary()
+
+
 @app.post("/api/plates/arrange")
 def arrange_plates(body: dict = Body(default={})):
     proj = _proj()

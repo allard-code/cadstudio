@@ -54,6 +54,8 @@ Workflow:
 5. Build plates: if the parts don't all fit on one 250x250 bed (e.g. two halves of a spool), put them on
    separate plates - set_part(..., plate=2) or arrange_plates() to spread them automatically. Parts keep
    their location relative to their own plate; the editor and export lay plates out side by side.
+   Give every plate a short name of what is on it with set_plate_name(plate, name) - the slicer shows it as the
+   plate name (without one, the plate is named after its parts).
 6. export_3mf() for the slicer. Several plates go into one project file (one plate per bed, with the printer,
    process and filament settings): tell the user to OPEN it as a project (File > Open project / "Open as
    project"), not import it as geometry. Or plate=N (one bed, centred) / split_plates=True (one file per bed).
@@ -332,7 +334,16 @@ def remove_plate(plate: int) -> dict:
     """Remove build plate N; its parts move to the previous plate and later plates are renumbered."""
     proj = _proj()
     n = proj.remove_plate(plate)
-    return {"plates": n, "parts": {p["name"]: int(p.get("plate", 1)) for p in proj.parts}}
+    return {"plates": n, "parts": {p["name"]: int(p.get("plate", 1)) for p in proj.parts},
+            "plate_names": {str(k): proj.plate_name(k) for k in range(1, n + 1)}}
+
+
+@mcp.tool()
+def set_plate_name(plate: int, name: str = "") -> dict:
+    """Name build plate N - the name the slicer shows for that plate (instead of "Untitled"). Use a short
+    description of what is on it, e.g. "wheels + axles". Empty name = automatic: made from the parts on the
+    plate (numbered copies collapse: wiel_1..wiel_4 -> "wiel x4"). Returns the names of all plates."""
+    return {"plate_names": _proj().set_plate_name(plate, name)}
 
 
 @mcp.tool()

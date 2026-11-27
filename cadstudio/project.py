@@ -124,6 +124,22 @@ def set_current_project(name: str) -> None:
 _open: dict[str, "Project"] = {}
 
 
+def auto_plate_name(part_names: list[str], limit: int = 60) -> str:
+    """Plate name from its parts: numbered copies collapse (wiel_1, wiel_2 -> "wiel x2"), in order, cut at limit."""
+    groups: dict[str, int] = {}
+    for n in part_names:
+        base = re.sub(r"[_\- ]?\d+$", "", n) or n
+        groups[base] = groups.get(base, 0) + 1
+    words = [f"{b} x{c}" if c > 1 else b for b, c in groups.items()]
+    out = ""
+    for i, w in enumerate(words):
+        nxt = w if not out else f"{out}, {w}"
+        if len(nxt) > limit:
+            return (out or w[:limit]) + f" +{len(words) - i}"
+        out = nxt
+    return out
+
+
 def get_project(name: str | None = None) -> "Project":
     """Return the (cached) Project object, reloading from disk when the file changed."""
     with LOCK:
@@ -495,6 +511,37 @@ class Project:
             self.save()
             return self.data["plates"]
 
+    @property
+    def plate_names(self) -> dict:
+        """Names given to build plates ({"3": "wheels"}); a plate without one is named after its parts."""
+        return self.data.setdefault("plate_names", {})
+
+    def set_plate_name(self, plate: int, name: str | None) -> dict:
+        """Name build plate N (shown as the plate name in the slicer). Empty name = automatic (from its parts)."""
+        with LOCK:
+            n = self.plate_count
+            if not 1 <= int(plate) <= n:
+                raise PartError(f"Plate {plate} does not exist (there are {n})")
+            name = (name or "").strip()
+            if name:
+                self.plate_names[str(int(plate))] = name[:80]
+            else:
+                self.plate_names.pop(str(int(plate)), None)
+            self.save()
+            return {str(k): self.plate_name(k) for k in range(1, n + 1)}
+
+    def plate_name(self, plate: int, part_names: list[str] | None = None) -> str:
+        """Name of build plate N: the name set with set_plate_name, else one made from the parts on it
+        (numbered copies collapse: wiel_1..wiel_4 -> "wiel x4"). part_names: the parts to name it after
+        (default: the visible, exported parts on that plate)."""
+        given = self.plate_names.get(str(int(plate)))
+        if given:
+            return given
+        if part_names is None:
+            part_names = [p["name"] for p in self.parts
+                          if int(p.get("plate", 1)) == int(plate) and p.get("visible", True) and p.get("export", True)]
+        return auto_plate_name(part_names)
+
     def remove_plate(self, plate: int) -> int:
         """Remove plate N. Its parts move to the previous plate (or plate 1); later plates shift down by one."""
         with LOCK:
@@ -509,6 +556,8 @@ class Project:
                     p["plate"] = max(1, plate - 1)
                 elif cur > plate:
                     p["plate"] = cur - 1
+            names = {int(k): v for k, v in self.plate_names.items()}
+            self.data["plate_names"] = {str(k if k < plate else k - 1): v for k, v in names.items() if k != plate}
             self.data["plates"] = n - 1
             self.save()
             return n - 1
@@ -1153,6 +1202,7 @@ class Project:
                 "common": self.data.get("common", ""), "presets": self.data.get("presets", {}),
                 "checkpoints": self.list_checkpoints(), "print": self.data.get("print", {}),
                 "parts": parts, "assembly": self.assembly_summary(), "bed": BED, "plates": self.plate_count,
+                "plate_names": {str(i): self.plate_name(i) for i in range(1, self.plate_count + 1)},
                 "plate_origins": {str(i): plate_origin(i, self.plate_count) for i in range(1, self.plate_count + 1)},
                 "dir": str(self.dir)}
 

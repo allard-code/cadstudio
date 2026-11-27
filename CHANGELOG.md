@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-27
+
+### Added
+- Build plates have names, written to the 3MF as the slicer's plate name (no more "Untitled" plates in OrcaSlicer,
+  Bambu Studio and Anycubic Slicer Next). A plate is named after its parts by default (numbered copies collapse:
+  `wiel_1..wiel_4` -> "wiel x4"); `set_plate_name(plate, name)` (MCP), `PUT /api/plates/{n}/name` or a double-click
+  on the bed tab in the editor sets your own. Names move along when a plate is removed. Also in single-plate and
+  per-plate (split) exports.
+
 ## [0.11.0] - 2026-11-26
 
 ### Fixed

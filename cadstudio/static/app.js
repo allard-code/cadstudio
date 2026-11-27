@@ -1008,9 +1008,21 @@ function renderPlates() {
     box.appendChild(b);
   };
   if (n > 1) mk(t("plates.all"), 0, t("plates.tab.title", { i: 0 }));
-  for (let i = 1; i <= n; i++) mk(t("plates.plate", { i }), i, t("plates.tab.title", { i }));
+  const names = S.project.plate_names || {};
+  for (let i = 1; i <= n; i++) {
+    mk(t("plates.plate", { i }), i, (names[i] ? names[i] + "\n" : "") + t("plates.tab.title", { i }) + "\n" + t("plates.rename.hint"));
+    box.lastChild.ondblclick = () => renamePlate(i);
+  }
   $("#plateDel").disabled = n <= 1;
   $("#exportPlates").classList.toggle("hidden", n <= 1);
+}
+async function renamePlate(i) {
+  const cur = (S.project.plate_names || {})[i] || "";
+  const name = window.prompt(t("plates.rename", { i }), cur);
+  if (name === null) return;
+  try {
+    await apply(await api(`/api/plates/${i}/name`, { method: "PUT", body: JSON.stringify({ name }) }));
+  } catch (e) { toast(e.message, "err", 9000); }
 }
 function showPlate(k, focus = true) {
   if (k > plateCount() || k < 0) return;

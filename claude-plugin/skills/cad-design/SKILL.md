@@ -60,7 +60,8 @@ the exported 3MF carries the pause when opened as a project in the slicer).
 - Walls ≥ 1.2 mm (preferably 1.6–2.0), a flat face at the bottom, overhangs ≤ 45° (chamfer instead of fillet at the bottom).
 - Clearance between separate parts 0.2–0.3 mm per side. Does it fit the bed? Use `measure`.
 - Parts that don't fit on one bed together (e.g. two 200 mm spool halves): give each its own build plate
-  (`set_part(..., plate=2)`) or call `arrange_plates()` — never park a part off the bed. `export_3mf` then writes
+  (`set_part(..., plate=2)`) or call `arrange_plates()` — never park a part off the bed. Name each plate after what is
+  on it with `set_plate_name(plate, name)`; the slicer shows that name. `export_3mf` then writes
   all plates into one project file — tell the user to open it as a project (File → Open project), not import it
   as geometry (`split_plates=True` for one file per plate).
 
