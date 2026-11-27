@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-27
+
+### Fixed
+- Automatic plate names kept a lone part's version number: `onderstel_v3` was named "onderstel_v". Digits are
+  only dropped when several numbered copies are collapsed ("wiel x4").
+
 ## [0.12.0] - 2026-11-27
 
 ### Added
